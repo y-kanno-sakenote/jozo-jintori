@@ -187,7 +187,7 @@ const svg = $("#map"), CTR = {};
 const TILES = [...svg.querySelectorAll("g[data-p]")], TRACE = $("#trace"), PCS = $("#pcs"), NUMS = $("#nums"), CHIPS = $("#chips"), LOG = $("#log"), SCORE = $("#score");
 let LF = 13;
 // 盤はふだん全国。なぞる間だけ、いる県から目の数で届く範囲に寄せる。県名の大きさ（LF）は全国のときの値のまま＝寄せると字も大きくなる
-const FULL = [14, 6, 860, 650]; // 下にも余白（下寄せにしたので沖縄が線につかないように） // 左右に約二十八ずつ余白
+const FULL = [14, -42, 860, 692]; // 上にも余白（北海道が画面の上端で切れないように） // 下にも余白（下寄せにしたので沖縄が線につかないように） // 左右に約二十八ずつ余白
 svg.setAttribute("viewBox", FULL.join(" "));
 svg.setAttribute("preserveAspectRatio", "xMidYMax meet"); // 盤は操作帯の線のすぐ上に。縦長の画面で余る高さは盤の上（題字・記録の側）にまとめる
 let VB = FULL.slice(), anim = 0, zooming = false; // zooming＝寄せる・戻す動きの最中（この間は指の判定をしない）
@@ -255,8 +255,12 @@ function layout() {
   // 帯の中身が入りきらないときだけ、その画面で上げる。画面の大きさが変わったら決め直す
   const key = total + "x" + w;
   if (g) SETUP_H = null;
-  else if (SETUP_H && SETUP_H.key === key) h = Math.min(SETUP_H.h, total - BAND.offsetHeight);
-  else SETUP_H = { key, h };
+  else if (acts.children.length) { // 帯に中身があるときだけ決める（読み込み直後の空の帯では決めない）
+    // はじめの画面（この端末で遊ぶ）では、部屋の画面の文二行と余白（約110px）を先に空けておく。決めた位置は上にしか動かさない
+    const own = Math.min(h, total - BAND.offsetHeight - (BAND.querySelector(".seats") && !NET ? 112 : 0));
+    if (!SETUP_H || SETUP_H.key !== key) SETUP_H = { key, h: own }; else SETUP_H.h = Math.min(SETUP_H.h, own);
+    h = SETUP_H.h;
+  }
   svg.style.flex = "none"; svg.style.height = h + "px"; BAND.style.minHeight = (total - h) + "px";
 }
 addEventListener("resize", () => requestAnimationFrame(fit));
@@ -436,11 +440,7 @@ function renderSetup() {
   say.innerHTML = ""; $(".band").classList.add("setup"); // 説明文は盤の左上の海（logDraw の INTRO）。帯は人数・席・始めるだけ
   acts.innerHTML = "";
   // 遊び方：この端末で遊ぶ（一台を回す・CPU）／部屋を作る／部屋に入る
-  for (const [m, label] of [["here", "この端末で遊ぶ"], ["make", "部屋を作る"], ["join", "部屋に入る"]])
-    btn(label, () => { if (m === "make") { if (setup.busy) return; setup.busy = true; setup.mode = "here"; setup.err = "つないでいます…"; renderSetup();
-      return netOpen(null).then(err => { setup.busy = false; if (err) netError(err, "here"); else setup.err = ""; }); } // 押した手応えを先に出し、失敗の理由はいまの画面に出す
-      setup.mode = m; setup.err = ""; renderSetup(); }, (setup.mode === m ? "on" : "sub") + " mode");
-  brk();
+  modeTabs(setup.mode);
   if (setup.mode === "join") { // 合言葉（数字四桁）を入れて入る。空いた席は部屋の中で選ぶ
     const inp = document.createElement("input"); inp.id = "code"; inp.inputMode = "numeric"; inp.maxLength = 4; inp.autocomplete = "off";
     inp.placeholder = "合言葉"; inp.setAttribute("aria-label", "合言葉（数字四桁）"); acts.appendChild(inp);
@@ -1022,6 +1022,17 @@ function cpuNet(level) {
 }
 // 部屋で待つ：合言葉・席（二列）・始める（親だけ）。親は人数と、空いた席を CPU にするかを決める
 const LOBBY = ["空き", "やさしい", "ふつう", "つよい"];
+// 遊び方の三つのタブ。はじめの画面にも部屋の画面にも常に出す。
+// 部屋の中で押すと、その部屋を抜けてから切り替える（「部屋を作る」は新しい部屋を作り直す）
+function modeTabs(cur) {
+  for (const [m, label] of [["here", "この端末で遊ぶ"], ["make", "部屋を作る"], ["join", "部屋に入る"]])
+    btn(label, () => {
+      if (m === "make") { if (setup.busy) return; setup.busy = true; if (NET) leaveNet(); setup.mode = "here"; setup.err = "つないでいます…"; renderSetup();
+        return netOpen(null).then(err => { setup.busy = false; if (err) netError(err, "here"); else setup.err = ""; }); } // 押した手応えを先に出し、失敗の理由はいまの画面に出す
+      if (NET) leaveNet();
+      setup.mode = m; setup.err = ""; renderSetup(); }, (cur === m ? "on" : "sub") + " mode");
+  brk();
+}
 function renderLobby() {
   NET.ui = "lobby"; g = null; NET.S = null;
   const room = NET.room, ss = Net.seatsOf(room), host = isHost();
@@ -1031,6 +1042,7 @@ function renderLobby() {
   const ready = ss.slice(0, room.n).every(s => s.kind !== "空き");
   say.innerHTML = `<div>合言葉　<b>${esc(NET.code)}</b></div><div>${host ? (ready ? "席がそろった。始める。" : "席を選んで、そろったら始める。") : ss.some(s => s.uid === NET.uid) ? "親が始めるのを待っています。" : "空いた席を選ぶ。"}</div>`;
   acts.innerHTML = "";
+  modeTabs(host ? "make" : "join");
   if (host) for (const n of [2, 3, 4]) btn(`${K(n)}人`, () => NET.be.update(NET.code, { n }), room.n === n ? "on" : "sub");
   const box = document.createElement("div"); box.className = "seats"; acts.appendChild(box);
   for (const i of [0, 2, 1, 3]) {
@@ -1047,7 +1059,6 @@ function renderLobby() {
     box.appendChild(c);
   }
   if (host) { const sb = btn("始める", () => NET.be.update(NET.code, { state: "play" })); sb.disabled = !ready; }
-  btn("抜ける", () => { leaveNet(); setup.mode = "here"; renderSetup(); }, "sub");
   requestAnimationFrame(fit);
 }
 if (DEBUG) window.__jintori = () => ({ net: NET && { code: NET.code, uid: NET.uid, applied: NET.applied, ui: NET.ui, desync: NET.desync, bad: NET.bad, host: isHost() },
