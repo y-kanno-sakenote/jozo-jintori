@@ -250,17 +250,19 @@ let SETUP_H = null; // 始まるまでの線の位置（盤の高さ）
 function layout() {
   svg.style.flex = ""; svg.style.height = ""; BAND.style.minHeight = "";
   const total = svg.parentElement.clientHeight, w = svg.clientWidth, mapH = w * FULL[3] / FULL[2], free = total - BAND.offsetHeight - mapH;
-  if (free <= 0 || BAND.classList.contains("pick")) return; // 横長・背の低い画面と選ぶ板の間は前のまま（盤が縮む。選ぶ板は帯の 55dvh を守る）
+  // 遊ぶ間：横長・背の低い画面と選ぶ板の間は前のまま（盤が縮む。選ぶ板は帯の 55dvh を守る）。始まるまでは画面の形によらず下で固定する
+  if (g && (free <= 0 || BAND.classList.contains("pick"))) return;
   let h = Math.round(mapH + free / 2);
   // 始まるまで（はじめの画面・部屋の画面）は、最初に決めた線の位置を動かさない。
   // 帯の中身が入りきらないときだけ、その画面で上げる。画面の大きさが変わったら決め直す
   const key = total + "x" + w;
   if (g) SETUP_H = null;
-  else if (acts.children.length) { // 帯に中身があるときだけ決める（読み込み直後の空の帯では決めない）
+  else if (!acts.children.length) return;
+  else { // 帯に中身があるときだけ決める（読み込み直後の空の帯では決めない）
     // はじめの画面（この端末で遊ぶ）では、部屋の画面の文二行と余白（約110px）を先に空けておく。決めた位置は上にしか動かさない
     const own = total - BAND.offsetHeight - (BAND.querySelector(".seats") && !NET ? 112 : 0); // 真ん中寄せの式は帯の高さで動くので使わない
     if (!SETUP_H || SETUP_H.key !== key) SETUP_H = { key, h: own }; else SETUP_H.h = Math.min(SETUP_H.h, own);
-    h = SETUP_H.h;
+    h = Math.max(120, SETUP_H.h); // 盤が潰れすぎない下限
   }
   svg.style.flex = "none"; svg.style.height = h + "px"; BAND.style.minHeight = (total - h) + "px";
 }
