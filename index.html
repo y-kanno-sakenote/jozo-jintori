@@ -83,6 +83,7 @@
   /* はじめの画面の席：二列×二段（上に紅・若草、下に藍・山吹）。人数で帯の高さを変えない */
   .row .seats { flex-basis: 100%; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
   .seats > div { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
+  .row .info { flex-basis: 100%; font-size: 15px; } /* 部屋の画面の合言葉の一行 */
   .seats > .off { visibility: hidden; } /* 二人・三人で空く席。場所だけ残す */
   .seats button { width: 5.8em; padding-left: 0; padding-right: 0; text-align: center; } /* 人・CPU弱/中/強を同じ幅に */
   .band.pick { max-height: 55dvh; }
@@ -257,7 +258,7 @@ function layout() {
   if (g) SETUP_H = null;
   else if (acts.children.length) { // 帯に中身があるときだけ決める（読み込み直後の空の帯では決めない）
     // はじめの画面（この端末で遊ぶ）では、部屋の画面の文二行と余白（約110px）を先に空けておく。決めた位置は上にしか動かさない
-    const own = Math.min(h, total - BAND.offsetHeight - (BAND.querySelector(".seats") && !NET ? 112 : 0));
+    const own = total - BAND.offsetHeight - (BAND.querySelector(".seats") && !NET ? 112 : 0); // 真ん中寄せの式は帯の高さで動くので使わない
     if (!SETUP_H || SETUP_H.key !== key) SETUP_H = { key, h: own }; else SETUP_H.h = Math.min(SETUP_H.h, own);
     h = SETUP_H.h;
   }
@@ -1038,11 +1039,14 @@ function renderLobby() {
   const room = NET.room, ss = Net.seatsOf(room), host = isHost();
   setup.n = room.n;
   $("#shade").hidden = true; $("#pass").hidden = true; paint(); logDraw(); scoreDraw(); ZOOM = null; zoomTo(FULL);
-  $("#when").innerHTML = ""; $(".band").classList.remove("setup", "pick", "ev", "at"); acts.className = "row";
+  $("#when").innerHTML = ""; $(".band").classList.remove("pick", "ev", "at"); $(".band").classList.add("setup"); acts.className = "row";
   const ready = ss.slice(0, room.n).every(s => s.kind !== "空き");
-  say.innerHTML = `<div>合言葉　<b>${esc(NET.code)}</b></div><div>${host ? (ready ? "席がそろった。始める。" : "席を選んで、そろったら始める。") : ss.some(s => s.uid === NET.uid) ? "親が始めるのを待っています。" : "空いた席を選ぶ。"}</div>`;
-  acts.innerHTML = "";
+  // 並びははじめの画面と同じ：盤／線／三つのタブ／そのタブの中身（合言葉・人数・席・始める）。文の欄は使わない
+  say.innerHTML = ""; acts.innerHTML = "";
   modeTabs(host ? "make" : "join");
+  const info = document.createElement("div"); info.className = "info";
+  info.innerHTML = `合言葉　<b>${esc(NET.code)}</b>　<span class="src">${host ? (ready ? "席がそろった。始める。" : "席を選んで、そろったら始める。") : ss.some(s => s.uid === NET.uid) ? "親が始めるのを待っています。" : "空いた席を選ぶ。"}</span>`;
+  acts.appendChild(info); brk();
   if (host) for (const n of [2, 3, 4]) btn(`${K(n)}人`, () => NET.be.update(NET.code, { n }), room.n === n ? "on" : "sub");
   const box = document.createElement("div"); box.className = "seats"; acts.appendChild(box);
   for (const i of [0, 2, 1, 3]) {
