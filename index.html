@@ -1,0 +1,1056 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>醸造百選の陣取り</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root { --paper: #f5eedd; --edge: #e9dfc8; --ink: #2b2620; --mute: #8a7e6e; --line: #d8cdb6;
+    --tile: #eee6d2; --dest: #9b2f2a; --btn: #8c3a2b;
+    /* 席の色（県の塗り・駒）：紅・藍・若草・山吹。明るさに段差（藍→紅→若草→山吹→持ち主なしの順に淡く）＝白黒・色覚の違いでも見分ける */
+    --c0: #e39c8f; --c1: #6a87bb; --c2: #b2d48f; --c3: #f2db8a;
+    --k0: #a8392c; --k1: #2f4f86; --k2: #4f7a2c; --k3: #a8750f; }
+  @media (prefers-color-scheme: dark) {
+    :root { --paper: #1f1c17; --edge: #191612; --ink: #e6ddcc; --mute: #9d917f; --line: #3a342b;
+      --tile: #2a251e; --dest: #c4554b; --btn: #d99a7e;
+      --c0: #8f3f33; --c1: #263d6b; --c2: #557a30; --c3: #94761f;
+      --k0: #f0a596; --k1: #a9c3f0; --k2: #bfe09a; --k3: #f3d27f; }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body { margin: 0; background: var(--edge); color: var(--ink); overflow: hidden;
+    font-family: 'Shippori Mincho', 'Hiragino Mincho ProN', 'Yu Mincho', serif; -webkit-text-size-adjust: 100%; }
+  /* 1画面：上に盤、下に操作帯。ページはスクロールしない */
+  .leaf { max-width: 48rem; margin: 0 auto; height: 100vh; height: 100dvh; background: var(--paper);
+    display: flex; flex-direction: column; overflow: hidden; }
+  svg { flex: 1 1 0; min-height: 0; width: 100%; display: block; touch-action: none; user-select: none; -webkit-user-select: none; }
+  .tile { fill: var(--tile); stroke: var(--paper); stroke-width: 1.5; }
+  .tile.o0 { fill: var(--c0); } .tile.o1 { fill: var(--c1); } .tile.o2 { fill: var(--c2); } .tile.o3 { fill: var(--c3); }
+  .tile.mv { fill-opacity: .6; } /* まだ動く県（品が残っている）は淡く。取り尽くされて色が決まった県だけ濃い */
+  .tile.dest { stroke: var(--dest); stroke-width: 6; }
+  .ring { fill: none; stroke: var(--paper); stroke-width: 2; pointer-events: none; display: none; }
+  .tile.dest ~ .ring { display: inline; }
+  /* なぞった道：通った県を光らせ、線と印 */
+  #trace { pointer-events: none; opacity: .6; } /* 県名が透けて読めるように */
+  #trace polyline { fill: none; stroke: var(--dest); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+  #trace circle { fill: var(--dest); }
+  #trace.done circle { display: none; } /* 指したあとは線だけ（県名に点を重ねない） */
+  /* 海の道：点線（この線に沿ってなぞると海を渡れる） */
+  #sea line { stroke: var(--mute); stroke-width: 2; stroke-dasharray: 3 5; stroke-linecap: round; opacity: .7; pointer-events: none; }
+  /* 選ぶ板：道で通った県に、板の見出しと同じ番号 */
+  #nums { pointer-events: none; }
+  #nums circle { fill: var(--dest); stroke: var(--paper); stroke-width: 1.5; }
+  #nums text { font-size: calc(var(--lf, 13px) * .9); fill: var(--paper); }
+  /* 貯めた色札：手番の人の分だけ、県名の上に小さな漢数字（3字の県は二行目の右）。縁を紙の色で抜いて、どの色の県の上でも読めるように */
+  #chips { pointer-events: none; }
+  #chips text { font-size: calc(var(--lf, 13px) * .6); paint-order: stroke; stroke: var(--paper); stroke-width: 2; stroke-linejoin: round; }
+  /* 盤の左上（県のない海）の記録：取った品・奪った色・失った色札を一行ずつ。新しい行ほど下、古い行は淡く */
+  #log, #score { pointer-events: none; }
+  #log text, #score text { fill: var(--ink); } /* 右下の海に色の県の数（席ごとに一行） */
+  #log .old { opacity: .5; }
+  #log .box { fill: var(--tile); fill-opacity: .55; stroke: var(--line); stroke-width: 1; } /* 記録の箱（薄い枠で塗る） */
+  #log .in { animation: pop .25s ease-out; }
+  @keyframes pop { from { opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) { #log .in { animation: none; } }
+  #pcs { pointer-events: none; }
+  #pcs circle { stroke: var(--paper); stroke-width: 1.5; }
+  #pcs .now { stroke: var(--ink); stroke-width: 2; }
+  .lbl { font-size: var(--lf, 13px); fill: var(--ink); pointer-events: none; }
+  .band { flex: none; display: flex; flex-direction: column; min-height: 0;
+    border-top: 1px solid var(--line); padding: 8px 14px calc(10px + env(safe-area-inset-bottom)); }
+  .stat { flex: none; display: flex; justify-content: space-between; align-items: baseline; gap: 8px;
+    font-size: 14px; color: var(--mute); letter-spacing: .08em; }
+  i.d { display: inline-block; width: .8em; height: .8em; border-radius: 50%; margin-right: 3px; vertical-align: -1px; }
+  /* 文は最大3行。高さを3行ぶん固定（行が増減しても盤が跳ねない） */
+  .say { flex: none; margin: 4px 0 8px; line-height: 1.6; height: 4.8em; overflow: hidden; }
+  .say div { overflow: hidden; }
+  .say .in { animation: fadein .25s ease-out; }
+  @keyframes fadein { from { opacity: 0; transform: translateY(6px); } }
+  .say b { font-weight: 600; }
+  .say .rule { color: var(--mute); }
+  .band.setup .say { display: none; } /* はじめの画面は文が盤の左上なので、空の文の欄を畳む（「始める」で三行の固定に戻る） */
+  .row { flex: none; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .row .break { flex-basis: 100%; height: 0; }
+  .row .seat { min-width: 3em; }
+  .row button.mode { padding-left: 8px; padding-right: 8px; } /* 遊び方の三つを一行に（375幅） */
+  .row input { font: inherit; font-size: 18px; width: 5em; padding: 6px 8px; letter-spacing: .3em; color: var(--ink);
+    background: var(--paper); border: 1px solid var(--line); border-radius: 3px; }
+  .row .err { color: var(--dest); font-size: 14px; }
+  #warn { font-size: 11px; letter-spacing: 0; }
+  /* はじめの画面の席：二列×二段（上に紅・若草、下に藍・山吹）。人数で帯の高さを変えない */
+  .row .seats { flex-basis: 100%; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .seats > div { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
+  .seats > .off { visibility: hidden; } /* 二人・三人で空く席。場所だけ残す */
+  .seats button { width: 5.8em; padding-left: 0; padding-right: 0; text-align: center; } /* 人・CPU弱/中/強を同じ幅に */
+  .band.pick { max-height: 55dvh; }
+  .band.pick .say { height: 1.6em; } /* 選ぶ間の文は一行（板を広く） */
+  .band.pick.ev .say { height: 3.2em; } /* 出来事があった手は二行（何が起きたか・効き目） */
+  .band.pick.ev.at .say { height: 4.8em; } /* 目的地で出来事があった手だけ三行 */
+  /* 振る前に県を触ったとき：一行目に県と色札（選ぶ板の見出しと同じ並び）、二・三行目に残っている品とコストの点 */
+  .say .pv { display: flex; justify-content: space-between; gap: 8px; }
+  .say .pv span { white-space: nowrap; } /* 語の途中で折らない */
+  .nw { white-space: nowrap; } /* 品名とコストの点をひとかたまりに（品の間の「、」でだけ折る） */
+  .say .pv-it span { white-space: nowrap; margin-right: 1em; }
+  .say .pv i.d, .say .pv-it i.d { margin: 0 0 0 3px; }
+  .say .tap { text-decoration: underline dotted; text-underline-offset: 3px; cursor: pointer; }
+  .tile.cand { stroke: var(--dest); stroke-width: 3; stroke-dasharray: 4 4; } /* 行事：目的地に選べる県 */ /* 選ぶ間も盤と道を半分近く残す */
+  #acts.pick { flex: 1 1 auto; min-height: 0; flex-wrap: nowrap; flex-direction: column; align-items: stretch; }
+  /* 選ぶ板：下からせり上がる。品が多いときだけ板の中でスクロール */
+  .mk { flex: 1 1 auto; min-height: 0; overflow-y: auto; margin: 0 -14px; padding: 0 14px;
+    border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); animation: fadein .18s ease-out; }
+  .mk label { display: flex; align-items: center; gap: 8px; min-height: 40px; }
+  .mk label + label, .mk .ph + label { border-top: 1px solid var(--line); }
+  .mk .nm { flex: 1; min-width: 0; }
+  .mk i.d { margin: 0 0 0 3px; } /* 色札一枚＝点一つ（品の右＝コスト・見出しの右＝その県の自分の色札。使う分は白抜き） */
+  .mk label:has(input:disabled) { color: var(--mute); } /* 残りの色札では払えない品 */
+  .mk .ph { font-size: 13px; color: var(--mute); letter-spacing: .1em; padding-top: 6px; display: flex; justify-content: space-between; }
+  .mkb { flex: none; display: flex; gap: 8px; padding-top: 8px; }
+  button { font: inherit; font-size: 15px; color: var(--btn); background: transparent; border: 1px solid var(--btn);
+    border-radius: 3px; padding: 8px 14px; cursor: pointer; }
+  button.sub { color: var(--mute); border-color: var(--line); }
+  button.on { background: var(--btn); color: var(--paper); }
+  button:disabled { cursor: default; opacity: .6; }
+  a { color: inherit; }
+  h1 { color: var(--ink); font-size: 17px; font-weight: 600; letter-spacing: .2em; margin: 2px 0 4px; }
+  /* 「◯◯の番」：一台を回すときの一画面 */
+  .pass { position: fixed; inset: 0; background: var(--paper); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 24px; }
+  .pass[hidden] { display: none; }
+  .pass p { margin: 0; font-size: 28px; letter-spacing: .3em; }
+  /* 帳面：結びで下から一覧（板の中だけスクロール） */
+  .shade { position: fixed; inset: 0; background: rgba(0,0,0,.25); display: flex; align-items: flex-end; justify-content: center; }
+  .shade[hidden] { display: none; }
+  .sheet { width: 100%; max-width: 48rem; max-height: 75dvh; overflow-y: auto; background: var(--paper);
+    padding: 0 16px calc(16px + env(safe-area-inset-bottom)); animation: fadein .18s ease-out; }
+  /* 見出しと「閉じる」は板の上に留める（品が多くて板の中をスクロールしても閉じられる） */
+  .sheet .hd { position: sticky; top: 0; background: var(--paper); padding: 12px 0 4px;
+    display: flex; justify-content: space-between; align-items: baseline; color: var(--mute); font-size: 14px; letter-spacing: .1em; }
+  .sheet h2 { font-size: 15px; font-weight: 600; letter-spacing: .15em; margin: 14px 0 0; }
+  .sheet ul { margin: 4px 0 0; padding-left: 1.2em; line-height: 1.9; }
+  .sheet li i.d { margin: 0 0 0 3px; } /* 品のコスト：色札一枚＝点一つ（選ぶ板と同じ） */
+  .src { font-size: 12px; color: var(--mute); }
+</style>
+</head>
+<body>
+<div class="leaf">
+  <svg id="map" viewBox="42 6 804 623" preserveAspectRatio="xMidYMid meet" role="group" aria-label="都道府県の盤"></svg>
+  <div class="band">
+    <div class="stat"><span id="when"></span><span id="warn"></span></div>
+    <div class="say" id="say"></div>
+    <div class="row" id="acts"></div>
+  </div>
+</div>
+<div class="pass" id="pass" hidden><p id="passn"></p><button id="passb">始める</button></div>
+<div class="shade" id="shade" hidden>
+  <div class="sheet"><div class="hd"><span id="shn">帳面</span><button class="sub" id="shx">閉じる</button></div><div id="book"></div></div>
+</div>
+<script src="data/jozo_data.js"></script>
+<script src="data/events.js"></script>
+<script src="js/engine.js"></script>
+<script src="js/ai.js"></script>
+<script>
+"use strict";
+const DATA = window.JOZO_DATA, E = JintoriEngine(DATA, window.JOZO_EVENTS), AI = JintoriAI(E), $ = s => document.querySelector(s);
+const K = E.kanji;
+const COLORS = ["紅", "藍", "若草", "山吹"];
+const KINDS = ["人", "やさしい", "ふつう", "つよい"]; // 席の選び：人か、コンピュータの強さ
+const SEATLBL = { "人": "人", "やさしい": "CPU初級", "ふつう": "CPU中級", "つよい": "CPU上級" }; // 席のボタンの字
+let g = null, setup = { n: 2, seat: ["人", "ふつう", "ふつう", "ふつう"], mode: "here", err: "" };
+const POS = () => E.cur(g).pos;
+// 手を指せる画面か：この端末で遊ぶときは人の番。通信対戦では自分の席の番で、自分の手の画面が出ている間だけ
+const isHuman = () => !!g && !g.over && (NET ? NET.ui === "mine" && mine(g.cur) : E.cur(g).kind === "人");
+const svg = $("#map"), CTR = {};
+(function buildMap() { // 六角盤
+  const R = 33, HW = Math.sqrt(3) / 2 * R, VS = 1.5 * R, MX = 44, MY = 40;
+  const hex = (cx, cy, r) => [0,1,2,3,4,5].map(i => { const a = Math.PI / 180 * (60 * i - 90);
+    return (cx + r * Math.cos(a)).toFixed(1) + "," + (cy + r * Math.sin(a)).toFixed(1); }).join(" ");
+  let out = "";
+  for (const [p, [q, r]] of Object.entries(DATA.tiles)) {
+    const cx = (MX + q * HW).toFixed(1), cy = (MY + r * VS).toFixed(1);
+    CTR[p] = [+cx, +cy];
+    const lines = p.length >= 3 ? [p.slice(0, 2), p.slice(2)] : [p];
+    const txt = lines.length === 1 ? `<tspan x="${cx}" dy=".36em">${p}</tspan>`
+      : `<tspan x="${cx}" dy="-.14em">${lines[0]}</tspan><tspan x="${cx}" dy="1.04em">${lines[1]}</tspan>`;
+    out += `<g data-p="${p}"><polygon class="tile" points="${hex(+cx, +cy, R - 1.5)}"></polygon>`
+      + `<text class="lbl" x="${cx}" y="${cy}" text-anchor="middle">${txt}</text>`
+      + `<polygon class="ring" points="${hex(+cx, +cy, R - 7)}"></polygon></g>`;
+  }
+  const sea = (DATA.sea || []).map(([a, b]) => { // 両端は県名にかからないよう六角の縁から
+    const [ax, ay] = CTR[a], [bx, by] = CTR[b], L = Math.hypot(bx - ax, by - ay), c = Math.min(.45, 22 / L);
+    const P = t => [(ax + (bx - ax) * t).toFixed(1), (ay + (by - ay) * t).toFixed(1)];
+    const [x1, y1] = P(c), [x2, y2] = P(1 - c);
+    return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"></line>`; }).join("");
+  svg.innerHTML = out + `<g id="sea">${sea}</g><g id="chips"></g><g id="pcs"></g><g id="trace"></g><g id="nums"></g><g id="log"></g><g id="score"></g>`;
+})();
+const TILES = [...svg.querySelectorAll("g[data-p]")], TRACE = $("#trace"), PCS = $("#pcs"), NUMS = $("#nums"), CHIPS = $("#chips"), LOG = $("#log"), SCORE = $("#score");
+let LF = 13;
+// 盤はふだん全国。なぞる間だけ、いる県から目の数で届く範囲に寄せる。県名の大きさ（LF）は全国のときの値のまま＝寄せると字も大きくなる
+const FULL = [14, 6, 860, 650]; // 下にも余白（下寄せにしたので沖縄が線につかないように） // 左右に約二十八ずつ余白
+svg.setAttribute("viewBox", FULL.join(" "));
+svg.setAttribute("preserveAspectRatio", "xMidYMax meet"); // 盤は操作帯の線のすぐ上に。縦長の画面で余る高さは盤の上（題字・記録の側）にまとめる
+let VB = FULL.slice(), anim = 0, zooming = false; // zooming＝寄せる・戻す動きの最中（この間は指の判定をしない）
+const CALM = matchMedia("(prefers-reduced-motion: reduce)");
+const setVB = v => { VB = v; svg.setAttribute("viewBox", v.map(n => n.toFixed(1)).join(" ")); };
+function zoomTo(v) { // 0.25秒で寄せる・戻す（動きが苦手な設定では即時）
+  cancelAnimationFrame(anim); zooming = false;
+  const a = VB.slice();
+  if (CALM.matches || a.every((n, i) => Math.abs(n - v[i]) < .5)) return setVB(v);
+  const t0 = performance.now(); zooming = true;
+  const tick = now => { const t = Math.min(1, (now - t0) / 250), k = 1 - (1 - t) ** 3;
+    setVB(a.map((n, i) => n + (v[i] - n) * k)); if (t < 1) anim = requestAnimationFrame(tick); else zooming = false; };
+  anim = requestAnimationFrame(tick);
+}
+// 届く範囲（目の数の歩数以内の県）が収まる枠。広すぎる手は六角の幅40pxで止め、いる県を中心に
+function reachView() {
+  layout(); // 寄せる前に盤の高さを確定させる（縦横比のずれを防ぐ）
+  const r = svg.getBoundingClientRect(); if (!r.width || !r.height) return FULL;
+  const n = E.steps(g), got = new Set([POS()]); let edge = [POS()];
+  for (let i = 0; i < n; i++) { const nx = []; for (const p of edge) for (const q of E.NB[p]) if (!got.has(q)) { got.add(q); nx.push(q); } edge = nx; }
+  const xs = [...got].map(p => CTR[p][0]), ys = [...got].map(p => CTR[p][1]), PAD = 36; // 六角の半分＋少し
+  const x0 = Math.min(...xs) - PAD, x1 = Math.max(...xs) + PAD, y0 = Math.min(...ys) - PAD, y1 = Math.max(...ys) + PAD;
+  const asp = r.width / r.height, HEX = Math.sqrt(3) * 31.5; // 六角の幅（盤の単位）
+  const wMax = r.width * HEX / 40, wMin = r.width * HEX / 64; // 六角は40〜64px
+  const fullW = Math.max(FULL[2], FULL[3] * asp);
+  const w = Math.min(fullW, wMax, Math.max(wMin, x1 - x0, (y1 - y0) * asp)), h = w / asp;
+  const fits = w >= x1 - x0 && h >= y1 - y0;
+  const clamp = (c, lo, hi, s) => lo + s / 2 > hi - s / 2 ? (lo + hi) / 2 : Math.min(hi - s / 2, Math.max(lo + s / 2, c));
+  let cx = fits ? (x0 + x1) / 2 : clamp(CTR[POS()][0], x0, x1, w), cy = fits ? (y0 + y1) / 2 : clamp(CTR[POS()][1], y0, y1, h);
+  cx = clamp(cx, FULL[0], FULL[0] + FULL[2], w); cy = clamp(cy, FULL[1], FULL[1] + FULL[3], h); // 盤の外の余白を見せない
+  // 収まらない手だけ、なぞる先を追う（pan）。先の県を真ん中に置く。端の県（沖縄・北海道など）でも寄せきれるよう、盤の端は越えてよい
+  ZOOM = fits ? null : { at: c => [clamp(c[0], x0, x1, w) - w / 2, clamp(c[1], y0, y1, h) - h / 2, w, h],
+    box: [x0, x1, y0, y1] }; // box＝端送りで盤を動かしてよい範囲（届く範囲の枠）
+  return [cx - w / 2, cy - h / 2, w, h];
+}
+let ZOOM = null;
+// 道の先へ盤を即時に動かす（動きの最中に指が別の県を通らないよう、アニメーションしない）。
+// f＝指の盤上の位置。指がない（離した）ときは寄せきる。指があるときは、動かしたあとの指が先の県の中心から20以内
+// （＝先の県の六角の内側）に収まる分までしか動かさない＝動いても指の下の県は変わらない
+function pan(f) {
+  if (!ZOOM || zooming) return;
+  const T = CTR[tipOf()], to = ZOOM.at(T);
+  if (Math.abs(VB[2] - to[2]) > 1) return;
+  const dx = to[0] - VB[0], dy = to[1] - VB[1];
+  let t = 1;
+  if (f) { // |f−T＋t·d| ≤ 20 を満たす一番大きい t（0〜1）。満たす t がなければ動かさない
+    const px = f[0] - T[0], py = f[1] - T[1], a = dx * dx + dy * dy, b = 2 * (px * dx + py * dy), c = px * px + py * py - 400;
+    if (a < 1e-6) return;
+    const D = b * b - 4 * a * c; if (D < 0) return;
+    const t1 = (-b - Math.sqrt(D)) / (2 * a), t2 = (-b + Math.sqrt(D)) / (2 * a);
+    t = Math.min(1, t2); if (t < 0 || t < t1) return;
+  }
+  if (t > 0) setVB([VB[0] + dx * t, VB[1] + dy * t, VB[2], VB[3]]);
+}
+// 盤の位置は「操作帯の上の空きの真ん中」のまま、操作帯の上の線だけを盤のすぐ下まで上げる。
+// 縦長の画面で、盤の高さ＋上の余白（＝余りの半分）だけを盤に与え、残りは操作帯に回す（操作帯の中は下に空きができる）
+const BAND = document.querySelector(".band");
+let SETUP_H = null; // 始まるまでの線の位置（盤の高さ）
+function layout() {
+  svg.style.flex = ""; svg.style.height = ""; BAND.style.minHeight = "";
+  const total = svg.parentElement.clientHeight, w = svg.clientWidth, mapH = w * FULL[3] / FULL[2], free = total - BAND.offsetHeight - mapH;
+  if (free <= 0 || BAND.classList.contains("pick")) return; // 横長・背の低い画面と選ぶ板の間は前のまま（盤が縮む。選ぶ板は帯の 55dvh を守る）
+  let h = Math.round(mapH + free / 2);
+  // 始まるまで（はじめの画面・部屋の画面）は、最初に決めた線の位置を動かさない。
+  // 帯の中身が入りきらないときだけ、その画面で上げる。画面の大きさが変わったら決め直す
+  const key = total + "x" + w;
+  if (g) SETUP_H = null;
+  else if (SETUP_H && SETUP_H.key === key) h = Math.min(SETUP_H.h, total - BAND.offsetHeight);
+  else SETUP_H = { key, h };
+  svg.style.flex = "none"; svg.style.height = h + "px"; BAND.style.minHeight = (total - h) + "px";
+}
+addEventListener("resize", () => requestAnimationFrame(fit));
+let lastH = 0;
+function fit() {
+  layout();
+  const r = svg.getBoundingClientRect(); if (!r.width || !r.height) return;
+  if (Math.abs(r.height - lastH) > .5) { lastH = r.height; logDraw(); scoreDraw(); } // 盤の高さが変わったら左上の文字の位置（visTop）を測り直す
+  const s = Math.min(r.width / FULL[2], r.height / FULL[3]);
+  const lf = LF; LF = Math.min(20, Math.max(12, 11 / s));
+  if (LF !== lf) { logDraw(); scoreDraw(); } // 記録と色の県の数の字の大きさは県名に合わせる
+  svg.style.setProperty("--lf", LF.toFixed(1) + "px");
+  for (const c of NUMS.querySelectorAll("circle")) c.setAttribute("r", (LF * .62).toFixed(1));
+}
+new ResizeObserver(fit).observe(svg);
+
+// ---- 指でなぞる：いる県から、指の下の県で道が伸びる。戻れば線が消える ----
+let route = [], tracing = false, from = null; // from＝なぞり始めた県（指したあとも道を残すため）
+const tipOf = () => route.length ? route[route.length - 1] : POS();
+const d2 = (p, x, y) => (CTR[p][0] - x) ** 2 + (CTR[p][1] - y) ** 2;
+function toSvg(e) { const m = svg.getScreenCTM().inverse(), q = new DOMPoint(e.clientX, e.clientY).matrixTransform(m); return [q.x, q.y]; }
+const nearest = (ps, x, y) => ps.reduce((a, b) => (d2(b, x, y) < d2(a, x, y) ? b : a));
+// 指の下の県で道を直す：一つ前の県に戻れば一歩消す／いま先の県の隣（海の道を含む）なら一歩伸ばす。
+// 隣でない県の上を通るのは無視。目の数に達したら、戻る動きだけ受け付ける
+const PREFS = Object.keys(CTR), SEA = {};
+for (const [a, b] of DATA.sea || []) { (SEA[a] = SEA[a] || []).push(b); (SEA[b] = SEA[b] || []).push(a); }
+const under = (x, y) => { const p = nearest(PREFS, x, y); return d2(p, x, y) < 33 * 33 ? p : null; };
+// 海の道の点線の近く（幅8）にいるあいだは、途中の陸の県に吸い付かない
+// 点 (x,y) が a→b の海の道の点線の上（幅8）にあるか
+function onSeaLine(a, b, x, y) {
+  const [ax, ay] = CTR[a], [bx, by] = CTR[b], vx = bx - ax, vy = by - ay, L2 = vx * vx + vy * vy;
+  const t = ((x - ax) * vx + (y - ay) * vy) / L2, c = Math.min(.45, 22 / Math.sqrt(L2));
+  return t > c && t <= 1.1 && Math.abs((x - ax) * vy - (y - ay) * vx) / Math.sqrt(L2) < 8;
+}
+function seaOn(tip, x, y) {
+  for (const s of SEA[tip] || []) {
+    if (s === POS() || route.includes(s)) continue;
+    const [ax, ay] = CTR[tip], [bx, by] = CTR[s], vx = bx - ax, vy = by - ay, L2 = vx * vx + vy * vy;
+    const t = ((x - ax) * vx + (y - ay) * vy) / L2;
+    const c = Math.min(.45, 22 / Math.sqrt(L2)); // 点線の描き始めと同じ位置から陸の県を無視する
+    if (t > c && t <= 1.1 && Math.abs((x - ax) * vy - (y - ay) * vx) / Math.sqrt(L2) < 8) return s;
+  }
+  return null;
+}
+function step(x, y) {
+  const n = E.steps(g), tip = tipOf(), back = route.length ? (route.length > 1 ? route[route.length - 2] : POS()) : null;
+  const u = under(x, y); if (!u || u === tip) return;
+  // 先の県から海の道の点線に沿っている間は、点線の近くの陸の県（一つ前の県を含む）に付かない＝戻りもしない
+  const s = route.length < n ? seaOn(tip, x, y) : null;
+  if (s && u !== s) return;
+  if (u === back) { route.pop(); return; }
+  // 直前の一歩が海の道なら、その点線を逆になぞっている間は途中の陸の県を無視する
+  if (back && (SEA[tip] || []).includes(back) && onSeaLine(tip, back, x, y)) return;
+  if (route.length >= n || u === POS() || route.includes(u) || !E.NB[tip].includes(u)) return; // 越えない・二度通らない・隣だけ
+  route.push(u);
+}
+// ---- 指の動きを盤の座標で辿る（なぞりのまとまり：slide / follow / feed / nextHidden / begin・pan） ----
+let last = null; // 前の指の位置は画面の座標で持つ（盤が動いても、今の盤の座標に直して刻む）
+const pt = e => ({ clientX: e.clientX, clientY: e.clientY });
+function slide([lx, ly], [x, y]) { // 盤の上の a→b を8ずつ刻んで判定する（指が速くても・端送りでも県を飛ばさない）
+  const k = Math.max(1, Math.ceil(Math.hypot(x - lx, y - ly) / 8)), t0 = tipOf();
+  for (let i = 1; i <= k; i++) step(lx + (x - lx) * i / k, ly + (y - ly) * i / k);
+  if (tipOf() !== t0) pan([x, y]);
+}
+function follow(e) {
+  const b = toSvg(e); slide(last ? toSvg(last) : b, b); last = pt(e);
+}
+// 端送り：指が画面の縁（32px以内）にある間、指の向きへ盤を一定の速さ（毎秒240）で送る。
+// 送った分だけ指の盤上の位置が進むので、その道のりを slide で刻んで判定する。動かしてよいのは届く範囲の枠の中だけ
+let feedRaf = 0, feedT = 0;
+function feed(now) {
+  feedRaf = 0;
+  if (!tracing || zooming || !ZOOM || !last || !nextHidden()) return;
+  const r = svg.getBoundingClientRect(), M = 32;
+  const ex = last.clientX < r.left + M ? -1 : last.clientX > r.right - M ? 1 : 0;
+  const ey = last.clientY < r.top + M ? -1 : last.clientY > r.bottom - M ? 1 : 0;
+  if (!ex && !ey) return;
+  const v = .24 * (feedT ? Math.min(50, now - feedT) : 16); feedT = now;
+  const [x0, x1, y0, y1] = ZOOM.box, lim = (c, lo, hi) => hi < lo ? c : Math.min(hi, Math.max(lo, c));
+  const nx = ex ? lim(VB[0] + ex * v, x0, x1 - VB[2]) : VB[0], ny = ey ? lim(VB[1] + ey * v, y0, y1 - VB[3]) : VB[1];
+  if (Math.abs(nx - VB[0]) < .01 && Math.abs(ny - VB[1]) < .01) return; // 枠の端まで送った
+  const a = toSvg(last); setVB([nx, ny, VB[2], VB[3]]); slide(a, toSvg(last)); drawTrace();
+  feedRaf = requestAnimationFrame(feed);
+}
+const feedOn = () => { if (!feedRaf) { feedT = 0; feedRaf = requestAnimationFrame(feed); } };
+// 端送りするのは、次に進める隣の県（先の県のまだ通っていない隣＝海の道を含む）の中心が画面の外にあるときだけ
+function nextHidden() {
+  if (route.length >= E.steps(g)) return false;
+  const tip = tipOf(), [vx, vy, vw, vh] = VB;
+  return E.NB[tip].some(p => p !== POS() && !route.includes(p)
+    && (CTR[p][0] < vx || CTR[p][0] > vx + vw || CTR[p][1] < vy || CTR[p][1] > vy + vh));
+}
+function traceLine(start, path, done) { // 道は赤い線と点だけ（県の塗り＝持ち主の色を消さない）。done＝指したあと（線だけ）
+  const pts = [start, ...path].map(p => CTR[p].join(",")).join(" ");
+  TRACE.innerHTML = path.length ? `<polyline points="${pts}"></polyline>` + path.map(p => `<circle cx="${CTR[p][0]}" cy="${CTR[p][1]}" r="5"></circle>`).join("") : "";
+  TRACE.classList.toggle("done", !!done);
+}
+function drawTrace() {
+  traceLine(POS(), route);
+  const left = E.steps(g) - route.length;
+  $("#say").textContent = left ? `あと${K(left)}県` : `${tipOf()}で離す`;
+}
+svg.addEventListener("pointerdown", e => {
+  if (!isHuman() || rolling || g.phase !== "move" || !g.options.length) return; // コンピュータの手番・サイコロが転がっている間は指を受けない
+  svg.setPointerCapture(e.pointerId); e.preventDefault();
+  if (zooming) { waiting = true; return; } // 寄せの最中は受け付けない。寄せ終わって動かし始めた位置から判定する
+  begin(e);
+});
+let waiting = false; // 寄せの最中に置かれた指
+function begin(e, strict) { // いる県か、引いた道の上から始める。道の途中から引き直すときは、そこから先を消す。引き直したときも先を追う
+  // strict＝寄せの最中に置かれた指：いる県か道の先の県の六角の内側（27以内）でだけ始める
+  const f = toSvg(e), on = nearest(strict ? [POS(), tipOf()] : [POS(), ...route], f[0], f[1]);
+  if (d2(on, f[0], f[1]) > (strict ? 27 * 27 : 50 * 50)) return;
+  const t0 = tipOf(); route = route.slice(0, route.indexOf(on) + 1);
+  if (tipOf() !== t0) pan(f);
+  tracing = true; last = null; follow(e); drawTrace(); feedOn();
+}
+svg.addEventListener("pointermove", e => {
+  if (waiting) { if (zooming) return; waiting = false; begin(e, true); return; }
+  if (!tracing) return; follow(e); drawTrace(); feedOn();
+});
+const stopFeed = () => { cancelAnimationFrame(feedRaf); feedRaf = 0; };
+let liftAt = 0; // なぞり終えた直後の click で県の板が開かないように
+const lift = () => {
+  waiting = false; if (!tracing) return; tracing = false; stopFeed(); liftAt = performance.now();
+  if (route.length === E.steps(g) && E.pathOk(g, route)) { const r = route; route = []; from = POS(); moved(play({ k: "move", path: r })); }
+  else pan(null); // 決まらずに離したときは寄せたまま、指がないので道の先へ寄せきる（続きを引くとき先の隣が見える）
+};
+svg.addEventListener("pointerup", lift);
+svg.addEventListener("pointercancel", () => { waiting = false; tracing = false; stopFeed(); }); // OSが指を奪ったときは決めない（道は残り、続きから引ける）
+
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const dot = i => `<i class="d" style="background:var(--k${i})"></i>`;
+const cname = i => `<span style="color:var(--k${i})">${COLORS[i]}</span>`; // 席の名前を席の色の字で
+const nameLink = id => { const e = E.ENT[id], u = e.urls[0];
+  return u ? `<a href="${esc(u)}" target="_blank" rel="noopener">${esc(e.name)}</a>` : esc(e.name); };
+
+// 盤：県は持ち主の色。駒は県の下の方に席の色で（手番の駒は縁どり）。
+// 色札は who（いま見せている手の人。無ければ手番の人）の分だけ、その人の色の漢数字で。品の残っていない県の色札は使えないので出さない
+function paint(who) {
+  for (const el of TILES) {
+    const p = el.dataset.p, t = el.firstChild, o = g ? g.owner[p] : undefined;
+    for (let i = 0; i < 4; i++) t.classList.toggle("o" + i, o === i);
+    t.classList.toggle("mv", !!g && !g.over && o !== undefined && E.free(g, p).length > 0); // おしまいでは全部決まりなので濃く
+    t.classList.toggle("dest", !!g && p === g.dest && !g.over);
+  }
+  route = []; tracing = false; TRACE.innerHTML = ""; NUMS.innerHTML = "";
+  const ch = !g || g.over ? null : who || E.cur(g);
+  CHIPS.innerHTML = !ch ? "" : E.PREFS.filter(p => g.chips[p][ch.i] > 0 && E.free(g, p).length).map(p => {
+    // 1〜2字の県は県名の上の真ん中（駒は県名の下）。3字の県は駒が上なので、二行目の一字の左（右端の北海道で二字の数が画面から切れないよう、左へ伸ばす）
+    const [x, y] = CTR[p], three = p.length >= 3;
+    return `<text x="${x}" y="${y}" ${three ? 'dx="-.95em" dy="1.5em" text-anchor="end"' : 'dy="-1.05em" text-anchor="middle"'} fill="var(--k${ch.i})">${K(g.chips[p][ch.i])}</text>`;
+  }).join("");
+  PCS.innerHTML = !g ? "" : g.players.map(pl => {
+    // 駒は県名の下に一列（4人でも六角の内側に収まる間隔と大きさ）。県名が2行になる3字の県は、字に重ならないよう県名の上に置く
+    const [x, y] = CTR[pl.pos], dx = (pl.i - (g.players.length - 1) / 2) * 10, dy = pl.pos.length >= 3 ? -20 : 17;
+    return `<circle class="${!g.over && pl.i === g.cur ? "now" : ""}" cx="${x + dx}" cy="${y + dy}" r="5" fill="var(--k${pl.i})"></circle>`;
+  }).join("");
+}
+function status(who) { // who＝いま見せている手の人（指したあとの流しの間は、指した人）
+  if (!g) return;
+  const pl = who || E.cur(g), left = g.perTurns - pl.moves + (who ? 1 : 0);
+  $("#when").innerHTML = g.over ? "おしまい" : `${cname(pl.i)}の番　${left > 1 ? "あと" + K(left) + "手" : "最後の手"}`;
+  const odd = NET ? NET.bad + NET.desync : 0; // 通信対戦：捨てた手・指紋のずれの数（隅に小さく）
+  $("#warn").textContent = odd ? `ずれ${K(odd)}` : "";
+  scoreDraw();
+}
+const acts = $("#acts"), say = $("#say");
+const btn = (label, fn, cls) => { const b = document.createElement("button"); b.textContent = label;
+  if (cls) b.className = cls; b.onclick = fn; acts.appendChild(b); return b; };
+const brk = () => { const d = document.createElement("div"); d.className = "break"; acts.appendChild(d); };
+
+// ---- 始まり：人数と、席ごとに人かコンピュータ（強さ） ----
+function renderSetup() {
+  g = null; $("#shade").hidden = true; paint(); logDraw(); scoreDraw(); ZOOM = null; zoomTo(FULL);
+  $("#when").innerHTML = ""; // 題字は盤の左上（logDraw）。空の行は高さ0になり、そのぶん盤が大きくなる
+  say.innerHTML = ""; $(".band").classList.add("setup"); // 説明文は盤の左上の海（logDraw の INTRO）。帯は人数・席・始めるだけ
+  acts.innerHTML = "";
+  // 遊び方：この端末で遊ぶ（一台を回す・CPU）／部屋を作る／部屋に入る
+  for (const [m, label] of [["here", "この端末で遊ぶ"], ["make", "部屋を作る"], ["join", "部屋に入る"]])
+    btn(label, () => { if (m === "make") return netOpen(null).then(err => err && netError(err)); setup.mode = m; setup.err = ""; renderSetup(); }, (setup.mode === m ? "on" : "sub") + " mode");
+  brk();
+  if (setup.mode === "join") { // 合言葉（数字四桁）を入れて入る。空いた席は部屋の中で選ぶ
+    const inp = document.createElement("input"); inp.id = "code"; inp.inputMode = "numeric"; inp.maxLength = 4; inp.autocomplete = "off";
+    inp.placeholder = "合言葉"; inp.setAttribute("aria-label", "合言葉（数字四桁）"); acts.appendChild(inp);
+    const go = () => { const c = inp.value.replace(/[０-９]/g, d => String.fromCharCode(d.charCodeAt(0) - 0xFEE0)).trim();
+      if (!/^[0-9]{4}$/.test(c)) return netError("合言葉は数字四桁");
+      netOpen(c).then(err => err && netError(err)); };
+    inp.onkeydown = e => { if (e.key === "Enter") go(); };
+    btn("入る", go);
+    if (setup.err) { const m = document.createElement("span"); m.className = "err"; m.textContent = setup.err; acts.appendChild(m); }
+    requestAnimationFrame(fit); return;
+  }
+  for (const n of [2, 3, 4]) btn(`${K(n)}人`, () => { setup.n = n; renderSetup(); }, setup.n === n ? "on" : "sub");
+  const box = document.createElement("div"); box.className = "seats"; acts.appendChild(box);
+  for (const i of [0, 2, 1, 3]) { // 二列の格子に左上から詰めるので、紅・若草・藍・山吹の順で置く
+    const c = document.createElement("div"), off = i >= setup.n;
+    const s = document.createElement("span"); s.className = "seat"; s.innerHTML = dot(i) + COLORS[i]; c.appendChild(s);
+    const b = btn(SEATLBL[setup.seat[i]], () => { // 表示だけ CPU初級/中級/上級（kind・level の値はそのまま）
+      setup.seat[i] = KINDS[(KINDS.indexOf(setup.seat[i]) + 1) % KINDS.length]; renderSetup(); }, "sub");
+    c.appendChild(b);
+    if (off) { c.className = "off"; c.setAttribute("aria-hidden", "true"); b.disabled = true; b.tabIndex = -1; }
+    box.appendChild(c);
+  }
+  btn("始める", start);
+  requestAnimationFrame(fit); // 帯の高さが変わるので盤と線の位置を合わせ直す
+}
+function start() {
+  const seats = setup.seat.slice(0, setup.n).map((k, i) => ({ name: COLORS[i], kind: k === "人" ? "人" : "コンピュータ", level: k === "人" ? null : k }));
+  g = E.newGame({ seed: (Math.random() * 2 ** 32) >>> 0, seats });
+  $(".band").classList.remove("setup"); // 文の欄を三行の固定に戻す
+  LOGS.length = 0; logDraw(); // 記録は一局ごとに空から
+  next();
+}
+const humans = () => g.players.filter(p => p.kind === "人").length;
+// 手番の頭：人が二人以上いる卓では「◯◯の番」の一画面を挟む（一台を回す）
+function next() {
+  if (NET) { NET.busy = false; return pump(); } // 通信対戦：手の列の続きを再生するか、次の番の画面へ
+  if (g.over) return renderEnd();
+  const pl = E.cur(g);
+  if (pl.kind === "人") {
+    if (humans() > 1) { $("#passn").innerHTML = `${cname(pl.i)}の番`; $("#pass").hidden = false; render(); }
+    else renderChoose();
+  } else cpuTurn();
+}
+$("#passb").onclick = () => { $("#pass").hidden = true; renderChoose(); };
+function render(who) { chooseUp = false; paint(who); status(who); LOG.style.display = SCORE.style.display = ""; requestAnimationFrame(fit); }
+let chooseUp = false, peeked = null; // chooseUp＝人の手番の振る前の画面が出ている（県を触ると品が出る）。peeked＝いま出している県
+
+// 巡ごとに最初に振る人がずれる。二人だと巡の変わり目で同じ人が二度続くので、そのときだけわけを一行（人の手もコンピュータの手も）
+function renderChoose() {
+  render(); ZOOM = null; zoomTo(FULL); from = null;
+  acts.innerHTML = "";
+  chooseSay(); chooseUp = true;
+  const rb = btn(E.cur(g).dice2 ? "振る（二つ）" : "振る", () => {
+    if (rolling) return;
+    chooseUp = false; // 振ったら県の品は消える（文はサイコロの目に替わる）
+    rb.disabled = sb.disabled = tb.disabled = true; // 転がっている間は押せない（二重に振らない・振ったあとにとどまらない）
+    play({ k: "roll" });
+    rollShow(ROLL_HUMAN, () => {
+      if (!g.options.length) { from = POS(); return moved(play({ k: "move", path: [] })); }
+      renderMove();
+    });
+  });
+  const sb = btn("とどまる", () => { if (rolling) return; from = null; moved(play({ k: "stay" })); }, "sub");
+  const tb = btn("取った品", () => showBook(E.cur(g).i), "sub"); // 手番の人の分（同じ行に並べる＝操作帯の高さは変わらない）
+}
+function chooseSay() { peeked = null; say.innerHTML = `<div>いまは<b>${esc(POS())}</b>。目的地は<b>${esc(g.dest || "なし")}</b>。</div>`; }
+// 振る前に県を触る：一行目に県とその県の自分の色札、二・三行目に残っている品とコストの点。
+// 三行に入りきらない品は「ほか◯品」。同じ県をもう一度触るか、県の外を触るともとの文に戻る。
+// 県名は出来事の行と同じ点線の下線＝押すと帳面の板に、その県の全部の品と持ち主とコスト（prefBook）
+function peek(p) {
+  if (!p || p === peeked) return chooseSay();
+  peeked = p;
+  const me = E.cur(g), c = g.chips[p][me.i], left = E.free(g, p);
+  // 一行目は県名とその県の自分の色札（字）だけ。持ち主の有無で変えない（色は盤で見える）。色札が無ければ県名だけ
+  say.innerHTML = `<div class="pv in"><span><b class="tap" data-pf="${esc(p)}">${esc(p)}</b>${c ? "　色札" + K(c) : ""}</span></div><div class="pv-it in"></div>`;
+  const box = say.lastChild;
+  if (!left.length) { box.textContent = "残っている品はない"; return; }
+  box.innerHTML = left.map(id => `<span>${esc(E.ENT[id].name)}${pips(me.i, E.costOf(g, id))}</span>`).join("");
+  const over = () => box.offsetTop - say.offsetTop + box.offsetHeight > say.clientHeight + 1, tail = document.createElement("span");
+  let rest = 0;
+  while (over() && box.childElementCount > 1) { tail.remove(); box.lastElementChild.remove(); tail.textContent = `ほか${K(++rest)}品`; box.appendChild(tail); }
+}
+// サイコロ：E.roll(g) が決めた目（g.dice）へ、文の「目は◯。」の字を数回替えて止める。
+// 替わる順は目から決まる＝乱数は引かない。間はだんだん延びる。動きを減らす設定では転がさずに目を出す
+const ROLL_HUMAN = [60, 70, 85, 100, 125, 160], ROLL_CPU = [60, 80, 110, 150];
+let rolling = false;
+function rollShow(frames, done) {
+  const face = j => g.dice.map((d, n) => K((d - 1 + (j && j * 4 + j * j + n * 3)) % 6 + 1)).join("と"); // j=0 で出た目。隣り合う字は必ず違う
+  if (CALM.matches) { say.innerHTML = `<div>目は${dice()}。</div>`; return done(); }
+  rolling = true; let j = frames.length; const gen = genNow();
+  const tick = () => {
+    if (gen !== genNow()) return; // 通信対戦で再生し直した（古い転がし）
+    say.innerHTML = `<div>目は${face(j)}。</div>`;
+    if (!j) return setTimeout(() => { if (gen !== genNow()) return; rolling = false; done(); }, 250); // 止まった目を読ませてから
+    setTimeout(tick, frames[frames.length - j--]);
+  };
+  tick();
+}
+function renderMove() {
+  render(); acts.innerHTML = ""; LOG.style.display = SCORE.style.display = "none"; // 寄せた盤では左上の記録・右下の色の県の数が県にかかる
+  say.innerHTML = `<div>目は${dice()}。指でなぞる。</div><div>目的地は${esc(g.dest || "なし")}。</div>`;
+  zoomTo(reachView()); // 文が入って盤の大きさが決まってから寄せる
+}
+// コンピュータの手：考える→振る→道を一県ずつ引いて見せる
+function cpuTurn() {
+  render(); ZOOM = null; zoomTo(FULL); acts.innerHTML = "";
+  const pl = E.cur(g);
+  say.innerHTML = "";
+  setTimeout(() => {
+    if (AI.decide(g, pl.level) === "stay") { from = null; E.stay(g); return cpuPick(); }
+    E.roll(g);
+    const path = AI.choosePath(g, pl.level), start = pl.pos;
+    let k = 0;
+    const tick = () => {
+      if (k < path.length) { k++; traceLine(start, path.slice(0, k)); return setTimeout(tick, 220); }
+      from = start; E.moveAlong(g, path); cpuPick();
+    };
+    rollShow(ROLL_CPU, () => setTimeout(tick, 150)); // 止まってから道まで、前と同じ約0.4秒（止まりの0.25秒＋0.15秒）
+  }, 600);
+}
+function cpuPick() { // コンピュータも自分で考えて選ぶ（同じ規則。行事なら目的地も）
+  const pl = E.cur(g);
+  let rec = g.phase === "pick" ? E.pick(g, AI.choosePicks(g)) : g.rec || g.log[g.log.length - 1];
+  if (g.phase === "dest") rec = E.setDest(g, AI.chooseDest(g, pl.level));
+  after(rec);
+}
+const dice = () => g.dice.map(K).join("と");
+// 出来事：一行で「県。題。」（数字は画面で漢数字に）。触ると本文と出典
+const DIG = "〇一二三四五六七八九";
+const kanNum = t => String(t).replace(/(?<![A-Za-zＡ-Ｚａ-ｚ0-9０-９])[0-9０-９]+/g, m => { // 英字に続く数字（B29 など）は名前なので変えない
+  const d = m.replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0));
+  return d.length >= 4 ? [...d].map(c => DIG[+c]).join("") : K(+d);
+});
+let shownEv = null;
+const evLine = ev => { shownEv = ev; return `<span class="tap" data-ev="1">${esc(ev.pref)}。${esc(kanNum(ev.title))}。</span>`; };
+const EFFECT = { "災い": "この県に貯めていた色札を失った", "恵み": `この県に色札がもう${K(E.PARAMS.bless)}枚`, "道がひらく": "次の手はサイコロ二つ", "行事": "次の目的地を自分で決める" };
+// 取り尽くされて色の決まった県では、災い・恵みは効かない（engine.js board）。災いは撒く前に貯めていた分を失う＝無ければ失うものはない
+const effect = (ev, rec) => (ev.kind === "災い" || ev.kind === "恵み") && !E.free(g, ev.pref).length ? "色の決まった県なので、効き目はない"
+  : ev.kind === "災い" && !rec.items.some(o => o.type === "lost") ? "失う色札はなかった" : EFFECT[ev.kind];
+function showEvent(ev) {
+  $("#shn").textContent = `${ev.pref}　${kanNum(ev.title)}`;
+  $("#book").innerHTML = `<p>${esc(kanNum(ev.text))}</p><p><a class="src" href="${esc(ev.source_url)}" target="_blank" rel="noopener">出典：${esc(ev.source_title)}</a></p>`;
+  $("#shade").hidden = false;
+}
+say.addEventListener("click", e => { if (e.target.closest("[data-ev]") && shownEv) showEvent(shownEv);
+  const pf = e.target.closest("[data-pf]"); if (pf && chooseUp) prefBook(pf.dataset.pf); });
+// 進んだ・とどまったあと：選ぶ板があれば出す（人）。無ければ流して次へ
+function moved(rec) {
+  if (g.phase === "pick") return renderPick();
+  if (g.phase === "dest") return renderDest(g.rec);
+  after(rec);
+}
+// 行事：次の目的地を選ぶ（盤の上で選べる県に点線の縁。県を押す）
+function renderDest(rec) {
+  render(); acts.innerHTML = ""; ZOOM = null; zoomTo(FULL);
+  $(".band").classList.remove("pick", "ev"); acts.className = "row";
+  for (const el of TILES) { el.firstChild.classList.toggle("cand", g.choices.includes(el.dataset.p)); el.firstChild.classList.remove("dest"); } // 選ぶ間は前の目的地の赤い縁を消す
+  say.innerHTML = `<div>${evLine(rec.event)}</div><div>次の目的地を選ぶ。点線の県を押す。</div>`;
+}
+// 道と、見出しの番号を盤に（通った順。着いた県だけなら番号はいらない）
+function drawWalk(path, heads) {
+  if (from && path.length) traceLine(from, path, true);
+  if (heads.length < 2) return;
+  NUMS.innerHTML = heads.map((p, i) => { const x = CTR[p][0], y = CTR[p][1] + (CTR[p][1] - 34 - 20 < FULL[1] ? 34 : -34); // 盤の上端（北海道）だけ下の頂点へ
+    return `<circle cx="${x}" cy="${y}" r="${(LF * .62).toFixed(1)}"></circle>`
+      + `<text x="${x}" y="${y}" dy=".36em" text-anchor="middle">${K(i + 1)}</text>`; }).join("");
+}
+// 選ぶ板：道の順に、いま払える品がある県だけ見出しと品（右にコストの点）。見出しの右はその県に貯めた自分の色札
+function renderPick() {
+  const pl = E.cur(g), rec = g.rec;
+  render(); acts.innerHTML = ""; ZOOM = null; zoomTo(FULL);
+  $(".band").classList.add("pick"); acts.className = "row pick";
+  const heads = g.pick.map(x => x.pref);
+  drawWalk(rec.path, heads);
+  $(".band").classList.toggle("ev", !!rec.event); $(".band").classList.toggle("at", !!(rec.event && rec.dest));
+  // 出来事があるときは「県。題。」と効き目の二行（県の名前はそこで言えている。目的地のときだけ三行目）。無いときは「◯◯に着いた。」
+  const arrived = rec.dest ? `目的地の<b>${esc(pl.pos)}</b>に着いた。` : rec.type === "stay" ? `<b>${esc(pl.pos)}</b>にとどまった。` : `<b>${esc(pl.pos)}</b>に着いた。`;
+  say.innerHTML = rec.event
+    ? `<div>${evLine(rec.event)}</div><div>${effect(rec.event, rec)}</div>` + (rec.dest ? `<div>目的地に着いた。</div>` : "")
+    : `<div>${arrived}</div>`;
+  const box = document.createElement("div"); box.className = "mk";
+  const cnt = {};
+  for (const [i, x] of g.pick.entries()) {
+    const h = document.createElement("div"); h.className = "ph";
+    h.innerHTML = `<span>${heads.length > 1 ? K(i + 1) + "　" : ""}${esc(x.pref)}</span><span data-c="${i}"></span>`; box.appendChild(h);
+    for (const id of x.ids) {
+      const l = document.createElement("label");
+      l.innerHTML = `<input type="checkbox" value="${id}" data-i="${i}"><span class="nm">${esc(E.ENT[id].name)}</span><span>${pips(pl.i, x.cost[id])}</span>`;
+      box.appendChild(l);
+    }
+  }
+  acts.appendChild(box);
+  const bar = document.createElement("div"); bar.className = "mkb"; acts.appendChild(bar);
+  // 決める：何も選ばなければ「貯めておく」（取らずに貯めるのは正当な手なので、確かめない）。選べば「取る」
+  const ids = () => [...box.querySelectorAll("input:checked")].map(x => +x.value);
+  const go = () => { $(".band").classList.remove("pick", "ev", "at"); acts.className = "row"; const r = play({ k: "pick", ids: ids() }); g.phase === "dest" ? renderDest(r) : after(r); };
+  const b = document.createElement("button"); b.onclick = go; bar.appendChild(b);
+  const tb = document.createElement("button"); tb.className = "sub"; tb.textContent = "取った品"; tb.onclick = () => showBook(pl.i); bar.appendChild(tb); // 決める前に、自分の取った品を見る
+  // 県ごとに、選んだ品のコストを自分の色札から引く（使う分は白抜き）。残りで払えない品は押せない
+  const sync = () => {
+    g.pick.forEach((x, i) => {
+      const bs = [...box.querySelectorAll(`input[data-i="${i}"]`)], rest = x.chips - bs.filter(c => c.checked).reduce((a, c) => a + x.cost[+c.value], 0);
+      box.querySelector(`[data-c="${i}"]`).innerHTML = "色札" + pips(pl.i, x.chips, rest);
+      for (const c of bs) c.disabled = !c.checked && x.cost[+c.value] > rest;
+    });
+    b.textContent = ids().length ? "取る" : "貯めておく";
+  };
+  box.onchange = sync; sync();
+}
+// 色札の点：n 枚のうち、はじめの rest 枚は塗り・残りは白抜き（使う分）
+const pips = (i, n, rest = n) => Array.from({ length: n }, (_, k) => `<i class="d" style="${k < rest ? "background:" : "border:1px solid "}var(${i === null ? "--mute" : "--k" + i})"></i>`).join(""); // i＝null は誰の色でもない点
+// 盤の左上の記録：県のない海（盤の単位で x 42〜640・y 6〜260。いちばん近いのは秋田・山形・新潟・富山の六角）に、
+// 取った品・奪った色・失った色札を一行ずつ。新しい行ほど下・四行まで（古い行は淡く）。字は県名の1.3倍（375幅で約12px）、
+// 長い行は幅（〜640）に縮めて収める。盤ごと寄せるなぞりの間は県にかかるので隠す（render で戻す）。一局の初めに空にする
+const LOGS = [], LOG_N = 6; // 記録に残す行数
+const sname = i => `<tspan fill="var(--k${i})">${COLORS[i]}</tspan>`; // 盤の中（SVG）で使う、席の色の字
+// はじめの画面（g が無い間）は、同じ海に題字と説明文を六行。「始める」で記録に譲る。
+// 盤の単位で（LF＝20）：題字34・本文26・行送り約34。本文の最後の行の下は約254＜260、いちばん長い行（21字）の右は約598＜640（新潟の六角は x≧645・富山は y≧268）
+const INTRO = n => ["サイコロを振って、目的地を目指そう。", "各県の醸造百選を自分の色札と交換し、", "県を自分の色に染めていく。",
+  "色札は、通った県に一枚、止まった県に二枚、", "目的地に三枚たまる。", `${K(E.PARAMS.turns[n])}手で、自分の色の県が多い人の勝ち。`];
+// 盤の画面の上端（盤の単位）。盤は縦横比を保って下寄せに置かれるので、縦長の画面では盤の上に余白ができる。左上の文字はその余白まで上げる
+function visTop() {
+  const r = LOG.ownerSVGElement.getBoundingClientRect(); if (!r.width || !r.height) return FULL[1];
+  const sc = Math.min(r.width / FULL[2], r.height / FULL[3]);
+  return FULL[1] - Math.max(0, r.height / sc - FULL[3]); // 下寄せなので余りは全部上
+}
+function logDraw(fresh) {
+  const F = LF * 1.3, x = FULL[0] + F * .6, W = 640 - x, top = visTop(); // 上と左は字の大きさに合わせた余白
+  if (!g) {
+    // 説明文は県名の1.1倍。題字はそのまま
+    const T = F * 1.3, y0 = top + F * .9 + T * .88, f = LF * 1.1, lh = f * 1.35;
+    LOG.innerHTML = `<text x="${x}" y="${y0.toFixed(1)}" font-size="${T.toFixed(1)}" font-weight="600" letter-spacing=".2em" style="fill:var(--btn)">醸造百選の陣取り</text>`
+      + INTRO(setup.n).map((s, i) => `<text x="${x}" y="${(y0 + F * 1.25 + i * lh).toFixed(1)}" font-size="${f.toFixed(1)}">${s}</text>`).join("");
+  } else {
+    // 記録は列島のすぐ上に、薄い枠の箱で六行。
+    // 箱は盤の単位で左端＝沖縄の六角の左端・右端 540（いちばん長い行「奈良　醤油（古代ひしお、奈良醤油）を得た」が 529 まで）・下端 228（列島と約四十あける。新潟の左端は 645・福井〜富山の上端は 268）。新しい行ほど下、古い行は淡く
+    const f = LF * 1.15, lh = f * 1.42, pad = f * .55, bx = CTR["沖縄"][0] - 33 * Math.sqrt(3) / 2, bw = 540 - bx, bb = 228, bh = LOG_N * lh + pad * 2, bt = bb - bh;
+    LOG.innerHTML = (LOGS.length ? `<rect class="box" x="${bx}" y="${bt.toFixed(1)}" width="${bw}" height="${bh.toFixed(1)}" rx="6"></rect>` : "") // 記録が一行も無い間は箱を出さない
+      + LOGS.map((s, i) => `<text x="${(bx + pad).toFixed(1)}" y="${(bt + pad + f * .9 + i * lh).toFixed(1)}" font-size="${f.toFixed(1)}"`
+      + ` class="${i < LOGS.length - 1 ? "old" : fresh ? "in" : ""}">${s}</text>`).join("");
+  }
+  for (const t of LOG.querySelectorAll("text")) if (t.getComputedTextLength() > (g ? 540 - (CTR["沖縄"][0] - 33 * Math.sqrt(3) / 2) - LF * 1.3 : W)) { t.setAttribute("textLength", W); t.setAttribute("lengthAdjust", "spacingAndGlyphs"); }
+}
+// 色の県の数：盤の右下の海（盤の単位で x 706〜836・y 480〜619。いちばん近いのは和歌山・三重・神奈川の六角＝どれも x≦730 かつ y≦480）に、
+// 席ごとに一行「紅　十二県」（名前は席の色の字・右揃え・下から積む）。四人で「若草十二県」の5字でも幅は約130＝海に収まる。字は記録と同じ県名の1.3倍
+function scoreDraw() {
+  if (!g) { SCORE.innerHTML = ""; return; }
+  const F = LF * 1.3, lh = F * 1.45, x = FULL[0] + FULL[2] - 40, yb = FULL[1] + FULL[3] - 34, n = g.players.length;
+  SCORE.innerHTML = g.players.map((p, i) => `<text x="${x}" y="${(yb - (n - 1 - i) * lh).toFixed(1)}" font-size="${F.toFixed(1)}" text-anchor="end">`
+    + `${sname(p.i)}　${K(E.countOf(g, p.i))}県</text>`).join("");
+}
+function logPush(s) { LOGS.push(s); if (LOGS.length > LOG_N) LOGS.shift(); logDraw(true); }
+// 指したあと：道を残して、取った品・奪った色・失った色札は盤の左上の記録に、それ以外は操作帯に一行ずつ流す
+// 箱（三行）が埋まったら押し出さずに頁を替える＝出た行は、その頁が替わるか手番が終わるまで残る
+function after(rec) {
+  const start = from, pl = g.players[rec.who], human = NET ? mine(pl.i) : pl.kind === "人"; // human＝この端末で指した手（選ぶ板をこの端末で見せた）
+  $(".band").classList.remove("pick", "ev"); acts.className = "row";
+  render(pl); acts.innerHTML = ""; ZOOM = null; zoomTo(FULL);
+  if (start && rec.path && rec.path.length) traceLine(start, rec.path, true);
+  // 人の手では、選ぶ板で見せた出来事・目的地・サイコロ二つは繰り返さない（コンピュータの手は流す）。
+  // 撒いた色札は一県ずつ流さない（盤の数で見える）。色の行は人の色を奪った・奪われたときだけ（空いた県が色になるのは盤で見える）。
+  // 失った色札・得た品・奪った色は盤の左上の記録へ（{ log }。操作帯には出さない＝二重にしない）。県名は取った・失った人の色の字。
+  // 記録は人の手でも残す（選ぶ板の効き目の行は板と一緒に消えているので）。順は 出来事 → 失った色札 → 得た → 奪った色 → 次の目的地
+  const lines = [], ev = rec.event, it = rec.items, who = s => `<tspan fill="var(--k${pl.i})">${esc(s)}</tspan>`;
+  const shown = human && (rec.board || !!rec.chose); // 選ぶ板も行事の画面も出なかった手（払える品が無い）は、人の手でも出来事を流す
+  if (ev && !shown) lines.push(evLine(ev));
+  for (const o of it) if (o.type === "lost") lines.push({ log: `${who(o.pref)}　色札を失った` });
+  if (ev && ev.kind === "恵み" && !shown && E.free(g, ev.pref).length) lines.push(EFFECT["恵み"]);
+  if (rec.type === "stay") lines.push(`${esc(COLORS[pl.i])}は${esc(pl.pos)}にとどまった`);
+  if (rec.dest && !shown) lines.push(`目的地の${esc(pl.pos)}に着いた`);
+  for (const o of it) if (o.type === "get") lines.push({ log: `${who(o.pref)}　<tspan font-weight="600">${esc(o.name)}</tspan>を得た` });
+  for (const o of it) if (o.type === "paint" && o.from !== undefined && o.to !== undefined) lines.push({ log: `${esc(o.pref)}　${sname(o.from)}→${sname(o.to)}` });
+  // 何も取らなかった手：人が板で「貯めておく」を押したなら繰り返さない。それ以外は撒いたか、撒く先も無かったか
+  if (!it.some(o => o.type === "get") && !(human && rec.board))
+    lines.push(it.some(o => o.type === "chips") ? "色札がたまった" : `${esc(pl.pos)}に残っている品はない`);
+  if (ev && ev.kind === "道がひらく" && !shown) lines.push("次の手はサイコロ二つ");
+  if (rec.chose) lines.push(`次の目的地は${esc(rec.chose)}`);
+  const GAP = human ? 700 : 500, PAGE = 1400, HOLD = human ? 1600 : 900;
+  // 操作帯は空にしない：最初の文が来るまで、直前の文（選ぶ板の出来事・「目は◯。」など）を残す。取っただけの手はそのまま次の手へ
+  let k = 0, kept = true; const gen = genNow();
+  const flow = () => {
+    if (gen !== genNow()) return; // 通信対戦で再生し直した・部屋を抜けた（古い流し）
+    if (k >= lines.length) return setTimeout(() => { if (gen === genNow()) next(); }, HOLD);
+    if (lines[k].log) { logPush(lines[k++].log); return setTimeout(flow, GAP); } // 記録の行は盤の左上へ（操作帯の頁は替えない）
+    if (kept) { say.innerHTML = ""; kept = false; }
+    const d = document.createElement("div"); d.className = "in"; d.innerHTML = lines[k]; say.appendChild(d);
+    if (say.children.length > 1 && d.offsetTop - say.offsetTop + d.offsetHeight > say.clientHeight + 1) { // 入りきらない：この頁を読ませてから替える（動きの translate を含めないよう行の位置で測る）
+      say.removeChild(d);
+      return setTimeout(() => { if (gen !== genNow()) return; say.innerHTML = ""; flow(); }, PAGE);
+    }
+    k++; setTimeout(flow, GAP);
+  };
+  flow();
+}
+// 結び：勝った人。帳面（自分の色の県とそこで得た品の名前・出典へのリンク）を開いて見せる
+function renderEnd() {
+  render(); ZOOM = null; zoomTo(FULL); acts.innerHTML = "";
+  say.innerHTML = `<div>${g.winner === null ? "引き分け" : `<b>${cname(g.winner)}</b>の勝ち`}。</div>`;
+  btn("帳面", () => showBook());
+  btn("もう一度", () => { if (NET) leaveNet(); renderSetup(); }, "sub");
+  showBook();
+}
+// 帳面：開くたびに中身を書き直す（県を押した板と同じ入れ物なので）。
+// i を渡すと、その人の「取った品」だけ（自分の番の振る前と選ぶ板から）：取った品のある県ごとに品の名前。
+// 県名はいまの持ち主の色の字（自分の色の県が分かる）。見出しは取った品の数。品が多いときは板の中だけスクロール（帳面と同じ）
+function showBook(i) {
+  if (i !== undefined) {
+    const ps = E.PREFS.filter(p => E.AT[p].some(id => g.holder[id] === i)), n = Object.values(g.holder).filter(h => h === i).length;
+    $("#shn").innerHTML = `${cname(i)}の取った品`;
+    $("#book").innerHTML = `<h2>${K(n)}品</h2><ul>` + (ps.map(p => { const o = g.owner[p];
+      // 品ごとのコストは点（選ぶ板・県を触ったときの品と同じ）
+      return `<li>${o === undefined ? esc(p) : `<span style="color:var(--k${o})">${esc(p)}</span>`}：${E.AT[p].filter(id => g.holder[id] === i).map(id => `<span class="nw">${nameLink(id)}${pips(i, E.costOf(g, id))}</span>`).join("、")}</li>`; }).join("")
+      || `<li class="src">まだない</li>`) + "</ul>";
+    $("#shade").hidden = false; return;
+  }
+  $("#shn").textContent = "帳面";
+  $("#book").innerHTML = g.score.map(s => {
+    const ps = E.PREFS.filter(p => g.owner[p] === s.i);
+    return `<h2>${dot(s.i)}${COLORS[s.i]}　${K(ps.length)}県</h2><ul>`
+      + (ps.map(p => `<li>${esc(p)}：${E.AT[p].filter(id => g.holder[id] === s.i).map(id => `<span class="nw">${nameLink(id)}</span>`).join("、")}</li>`).join("") || `<li class="src">なし</li>`) + "</ul>";
+  }).join("");
+  $("#shade").hidden = false;
+}
+$("#shx").onclick = () => { $("#shade").hidden = true; };
+// 県を押す：振る前は操作帯に品（peek）。選ぶ板とおしまいでは帳面の板に品と持ち主。なぞる間は道を引く方が優先。
+// コンピュータの番・手のあとの流しの間は何も出さない
+svg.addEventListener("click", e => {
+  if (!g || (g.phase === "move" && isHuman()) || performance.now() - liftAt < 400) return;
+  const [x, y] = toSvg(e), p = under(x, y);
+  if (chooseUp && !rolling) return peek(p);
+  if (!p) return;
+  if (g.phase === "dest" && isHuman() && g.choices.includes(p)) { for (const el of TILES) el.firstChild.classList.remove("cand"); say.innerHTML = `<div>次の目的地は<b>${esc(p)}</b>。</div>`; return after(play({ k: "dest", p })); } // 選んだら、選ぶ指示を残さない
+  if (!g.over && !(g.phase === "pick" && isHuman())) return;
+  prefBook(p);
+});
+// 県の板：その県の全部の品に、持ち主の色の名前とコストの点（取られた品は持ち主の色・残っている品は手番の人の色）。
+function prefBook(p) {
+  const o = g.owner[p], me = g.over ? null : E.cur(g).i; // おしまいの後は、残っている品の点を誰の色にもしない
+  $("#shn").innerHTML = `${esc(p)}　${o === undefined ? "まだ誰の色でもない" : cname(o) + "の色"}`;
+  $("#book").innerHTML = "<ul>" + E.AT[p].map(id => { const h = g.holder[id];
+    return `<li>${nameLink(id)}　${h !== undefined ? cname(h) : '<span class="src">残っている</span>'}${pips(h !== undefined ? h : me, E.costOf(g, id))}</li>`; }).join("") + "</ul>";
+  $("#shade").hidden = false;
+}
+$("#shade").onclick = e => { if (e.target === e.currentTarget) e.currentTarget.hidden = true; };
+// ---- 手を指す（この端末で遊ぶときも通信対戦でも同じ口）。手の中身＝エンジンに渡す引数 ----
+function applyAct(a) {
+  switch (a.k) {
+    case "roll": return E.roll(g);
+    case "stay": return E.stay(g);
+    case "move": return E.moveAlong(g, a.path || []); // Firebase は空の配列を落とす
+    case "pick": return E.pick(g, a.ids || []);
+    case "dest": return E.setDest(g, a.p);
+  }
+  throw new Error("act " + a.k);
+}
+// 通信対戦では、積める手か確かめ、自分の盤に先に当ててから部屋の手の列に積む。積めなかったら最初から再生し直す
+function play(a) {
+  if (!NET) return applyAct(a);
+  const m = Object.assign({}, a, { by: NET.uid });
+  if (!legal(m)) { console.warn("その手は積めない（番の席の持ち主でない・形が違う）", a); return null; }
+  const n = NET.applied;
+  let r; try { r = applyAct(m); } catch (e) { console.warn("その手は当たらない", e.message); return null; } // エンジンが拒む手は積まない
+  NET.applied++;
+  m.fp = Net.fingerprint(g);
+  NET.be.pushMove(NET.code, n, m).then(ok => { if (!ok) resync("積めなかった"); });
+  return r;
+}
+
+// ---- 通信対戦。部屋には種と手の列だけ。各端末が同じ順に再生して同じ g を作る ----
+// 遊ぶ間の席と親（NET.S）は、始めたときの部屋の席・親から、手の列の「seat」「host」の手で動く＝どの端末でも同じ順に同じ値になる
+let Net = null, BE = null, NET = null; // Net＝js/net.js・BE＝Backend（一つを使い回す）・NET＝いまの部屋
+const DEBUG = new URLSearchParams(location.search).has("debug");
+const LEVELS = ["やさしい", "ふつう", "つよい"];
+const seatsNow = () => NET.S ? NET.S.seats : Net.seatsOf(NET.room);
+const mine = i => { const s = seatsNow()[i]; return !!s && s.kind === "人" && s.uid === NET.uid; };
+const isHost = () => !!NET && (NET.S ? NET.S.host : NET.room && NET.room.host) === NET.uid;
+const genNow = () => NET ? NET.gen : 0; // 世代：最初から再生し直すたびに一つ進む。古い世代のタイマーは何もしない
+const seatPlayer = (s, i) => ({ name: COLORS[i], kind: s.kind === "人" ? "人" : "コンピュータ", level: s.kind === "人" ? null : s.level || "ふつう" });
+function netError(msg) { setup.mode = "join"; setup.err = msg; renderSetup(); }
+// その手を積める・当てられるか（積む前も、受け取って再生するときも同じ判定。席の持ち主は手の列から作った NET.S で見る）
+function legal(m) {
+  const S = NET.S; if (!S || !m || typeof m.by !== "string") return false;
+  const seatedHuman = S.seats.some(s => s.kind === "人" && s.uid === m.by);
+  if (m.k === "host") return seatedHuman && m.by !== S.host; // 座っている人が親を引き継ぐ
+  if (m.k === "seat") return m.by === S.host && Number.isInteger(m.i) && m.i >= 0 && m.i < S.seats.length && S.seats[m.i].kind === "人" && LEVELS.includes(m.level); // 親が人の席を CPU に
+  if (!g || g.over || !["roll", "stay", "move", "pick", "dest"].includes(m.k)) return false;
+  const s = S.seats[g.cur];
+  if (s.kind === "人" ? m.by !== s.uid : m.by !== S.host) return false; // 人の席はその人、CPU の席は親
+  if (m.k === "move" && m.path != null && !(Array.isArray(m.path) && m.path.length <= 12 && m.path.every(p => E.PREFS.includes(p)))) return false; // 道は県の名前だけ
+  if (m.k === "pick" && m.ids != null && !(Array.isArray(m.ids) && m.ids.length <= 40 && m.ids.every(Number.isInteger))) return false;
+  if (m.k === "dest" && !E.PREFS.includes(m.p)) return false;
+  return true;
+}
+// 部屋を作る（code＝null）か、合言葉の部屋に入る。うまくいかなければ理由の文を返す
+async function netOpen(code) {
+  try {
+    if (!Net) Net = await import("./js/net.js");
+    if (!BE) { BE = Net.makeBackend(); BE.uid = await BE.init(); }
+    if (!code) code = await BE.createRoom(Net.newRoomData(BE.uid));
+    else {
+      const r = await BE.getRoom(code);
+      if (!r) return "その合言葉の部屋はない";
+      if (r.state === "play" && !Net.seatsOf(r).slice(0, r.n).some(s => s.uid === BE.uid)) return "もう始まっている";
+    }
+  } catch (e) { console.error(e); return "つながらない"; }
+  if (NET) leaveNet();
+  sessionStorage.setItem("jintori.room", code); // 再読み込みで同じ部屋・同じ席に戻る
+  g = null; LOGS.length = 0;
+  NET = { be: BE, code, uid: BE.uid, room: null, S: null, applied: 0, ui: null, busy: false, pending: null, desync: 0, bad: 0, gen: 1, waitKey: null, claiming: false };
+  NET.off = BE.watch(code, onRoom);
+  NET.poll = /Firebase/.test(NET.be.constructor.name) ? 0 : setInterval(() => { const N = NET; N.be.getRoom(N.code).then(r => { if (NET === N && r) onRoom(r); }, () => {}); }, 3000); // 保険：知らせを取りこぼしても読み直す（Firebase は知らせが確かなので20秒ごと＝無料枠を減らさない） Firebase は購読が確かで、読み直しは空振りになるのでしない
+  return "";
+}
+function leaveNet() {
+  if (!NET) return;
+  clearInterval(NET.poll); NET.off(); NET.be.leave(NET.code); NET = null; g = null; rolling = false;
+  sessionStorage.removeItem("jintori.room");
+}
+function onRoom(room) {
+  if (!NET) return;
+  if (!room) { leaveNet(); return netError("部屋がなくなった"); }
+  if (NET.room && Net.movesOf(room).length < Net.movesOf(NET.room).length) return; // 古い知らせ（手は足すだけなので、少ない方は古い）
+  NET.room = room;
+  if (room.state !== "play") { claimLobbyHost(room); return renderLobby(); }
+  if (!g) { rebuild(); return netNext(); } // 入ったとき・再読み込みのとき：最初から再生して追いつく
+  if (NET.ui === "mine") { // 自分の番の間（流しを含む）は自分の画面のまま。その間にほかの手が積まれていたら（席を替えられた等）最初から
+    if (g.t === NET.mineT && !g.over && Net.movesOf(room).length > NET.applied) resync("番の間にほかの手"); // 番を終えたあとの手は、流しのあとで当てる
+    return;
+  }
+  pump();
+}
+// 待つ間：親が抜けたら、つながっている座った人のうち席の若い人が親を引き継ぐ
+function claimLobbyHost(room) {
+  const on = room.online || [], first = Net.seatsOf(room).find(s => s.kind === "人" && on.includes(s.uid));
+  if (NET.claiming || on.includes(room.host) || !first || first.uid !== NET.uid) return;
+  NET.claiming = true; NET.be.claimHost(NET.code).finally(() => { if (NET) NET.claiming = false; });
+}
+// 遊ぶ間：親（NET.S.host）がつながっていなければ、つながっている座った人のうち席の若い人が「host」の手を積む（積めるのは一人だけ）
+function claimPlayHost() {
+  const on = NET.room.online || [], S = NET.S;
+  if (on.includes(S.host)) return;
+  const first = S.seats.find(s => s.kind === "人" && on.includes(s.uid));
+  if (!first || first.uid !== NET.uid) return;
+  pushNet({ k: "host" });
+}
+// 自分の盤には当てずに積む（CPU の手・席を替える・親を引き継ぐ）。積んだ手は知らせで戻ってきてから、ほかの端末と同じ道で当てる
+function pushNet(a) {
+  const n = NET.applied; if (NET.pending === n) return; NET.pending = n;
+  const m = Object.assign(a, { by: NET.uid });
+  if (!legal(m)) { NET.pending = null; return; }
+  m.fp = fpAfter(m, n);
+  if (m.fp === null) { NET.pending = null; return; }
+  const gen = NET.gen;
+  NET.be.pushMove(NET.code, n, m).then(ok => { if (!ok && NET && NET.gen === gen) resync("積めなかった"); });
+}
+// 指紋：別の盤で手の列を n まで再生し、この手を当てたあとのようす（エンジンが拒む手なら null）
+function fpAfter(m, n) {
+  if (m.k === "seat" || m.k === "host") return Net.fingerprint(g); // 盤は変わらない
+  const keep = { g, S: NET.S, applied: NET.applied, bad: NET.bad, desync: NET.desync };
+  try {
+    replay(Net.movesOf(NET.room).slice(0, n), false);
+    applyAct(m); return Net.fingerprint(g);
+  } catch (e) { return null; }
+  finally { g = keep.g; NET.S = keep.S; NET.applied = keep.applied; NET.bad = keep.bad; NET.desync = keep.desync; }
+}
+// 手を一つ当てる。積める手でない・エンジンが拒む手は、どの端末でも同じく捨てて次へ（数える）。指紋が違えば数える
+function applyNet(m, check = true) {
+  NET.applied++;
+  if (!legal(m)) { NET.bad++; if (check) console.warn("捨てた手", NET.applied - 1, m && m.k); return null; }
+  if (m.k === "host") { NET.S.host = m.by; return null; }
+  if (m.k === "seat") { NET.S.seats[m.i] = { kind: "コンピュータ", level: m.level, uid: null }; Object.assign(g.players[m.i], seatPlayer(NET.S.seats[m.i], m.i)); return null; }
+  let r;
+  try { r = applyAct(m); } catch (e) { NET.bad++; if (check) console.warn("当たらない手", NET.applied - 1, e.message); return null; }
+  if (check && m.fp && m.fp !== Net.fingerprint(g)) { NET.desync++; console.error("ずれ", NET.applied - 1, m.fp, Net.fingerprint(g)); }
+  return r;
+}
+// 始めたときの部屋から、手の列を順に当てる（流しは見せない）
+function replay(ms, check) {
+  const room = NET.room, seats = Net.seatsOf(room).slice(0, room.n);
+  NET.S = { seats: seats.map(s => Object.assign({}, s)), host: room.host };
+  g = E.newGame({ seed: room.seed, seats: seats.map(seatPlayer) });
+  NET.applied = 0; NET.bad = 0; NET.desync = 0;
+  for (const m of ms) applyNet(m, check);
+}
+// 最初から再生する。古い世代のタイマー・待ちは全部効かなくなる。左上の記録も手の記録から作り直す
+function rebuild() {
+  NET.gen++; NET.busy = false; NET.ui = null; NET.pending = null; NET.waitKey = null; from = null; rolling = false; tracing = false;
+  $("#pass").hidden = true;
+  replay(Net.movesOf(NET.room), true);
+  LOGS.length = 0;
+  for (const rec of g.log) for (const s of recLog(rec)) LOGS.push(s);
+  LOGS.splice(0, Math.max(0, LOGS.length - LOG_N));
+  $(".band").classList.remove("setup");
+}
+function resync(why) { if (!NET || !NET.room || NET.room.state !== "play") return; console.warn("再生し直し：" + why); rebuild(); netNext(); }
+// 記録の行（after と同じ：失った色札・得た品・奪った色）
+function recLog(rec) {
+  const it = rec.items, who = s => `<tspan fill="var(--k${rec.who})">${esc(s)}</tspan>`, out = [];
+  for (const o of it) if (o.type === "lost") out.push(`${who(o.pref)}　色札を失った`);
+  for (const o of it) if (o.type === "get") out.push(`${who(o.pref)}　<tspan font-weight="600">${esc(o.name)}</tspan>を得た`);
+  for (const o of it) if (o.type === "paint" && o.from !== undefined && o.to !== undefined) out.push(`${esc(o.pref)}　${sname(o.from)}→${sname(o.to)}`);
+  return out;
+}
+// まだ当てていない手があれば一つずつ見せて当てる。無ければ次の画面
+function pump() {
+  if (!NET || !g || NET.busy) return;
+  const ms = Net.movesOf(NET.room);
+  if (NET.applied < ms.length) { NET.busy = true; NET.ui = "anim"; return showMove(ms[NET.applied]); }
+  netNext();
+}
+const idle = () => { NET.busy = false; pump(); };
+// ほかの席の手（人・CPU）を見せる：振る＝目を転がす／道＝一県ずつ引く／選ぶ・目的地＝そのまま。番が終われば流し（after）
+function showMove(m) {
+  const gen = NET.gen;
+  if (!legal(m) || m.k === "seat" || m.k === "host") { applyNet(m); return idle(); } // 捨てる手・席と親の手は見せずに当てる
+  const pl = E.cur(g), start = pl.pos, t0 = g.t;
+  $(".band").classList.remove("pick", "ev", "at"); acts.className = "row";
+  const plain = () => { render(); acts.innerHTML = ""; ZOOM = null; zoomTo(FULL); };
+  const land = rec => rec === null ? idle() : g.t === t0 && !g.over ? idle() : after(rec); // 番の途中なら次の手を待つ
+  if (m.k === "roll") { if (applyNet(m) === null) return idle(); plain(); return rollShow(ROLL_CPU, idle); }
+  if (m.k === "move" && (m.path || []).length && g.phase === "move" && E.pathOk(g, m.path)) { // 確かめてから描く（当たらない道は下で捨てる）
+    plain(); let k = 0;
+    const tick = () => {
+      if (!NET || NET.gen !== gen) return; // 再生し直したあとの古いタイマー
+      if (k < m.path.length) { k++; traceLine(start, m.path.slice(0, k)); return setTimeout(tick, 220); }
+      from = start; land(applyNet(m));
+    };
+    return tick();
+  }
+  if (m.k === "stay") from = null;
+  if (m.k === "move") from = start;
+  land(applyNet(m));
+}
+// 番の頭（と、ほかの人の手を待つ間）の画面
+function netNext() {
+  if (g.over) { if (NET.ui !== "end") { NET.ui = "end"; renderEnd(); } return; }
+  if (mine(g.cur)) { NET.ui = "mine"; NET.mineAt = g.cur; NET.mineT = g.t; return resumeMine(); }
+  const s = seatsNow()[g.cur], key = [NET.gen, NET.applied, s.kind, s.uid, isHost(), NET.room.online.includes(s.uid), NET.bad + NET.desync].join("|");
+  if (NET.ui !== "wait" || NET.waitKey !== key) { NET.ui = "wait"; NET.waitKey = key; renderWait(); }
+  claimPlayHost();
+  if (s.kind === "コンピュータ" && isHost()) cpuNet(s.level || "ふつう");
+}
+// 自分の番：段に合わせて画面を出す（再読み込みで番の途中から戻ったときも）
+function resumeMine() {
+  if (g.phase === "choose") { from = null; return renderChoose(); }
+  if (g.phase === "move") return g.options.length ? renderMove() : moved(play({ k: "move", path: [] }));
+  if (g.phase === "pick") return renderPick();
+  if (g.phase === "dest") return renderDest(g.rec);
+}
+// ほかの人の番：「藍の番（待っています）」。親の端末には、つながっていない人の席を CPU に替える操作
+function renderWait() {
+  const pl = E.cur(g), s = seatsNow()[pl.i];
+  $(".band").classList.remove("pick", "ev", "at"); acts.className = "row";
+  render(); acts.innerHTML = ""; ZOOM = null; zoomTo(FULL);
+  if ((g.phase === "pick" || g.phase === "dest") && from && g.rec && g.rec.path.length) traceLine(from, g.rec.path, true);
+  const l2 = g.phase === "move" ? `目は${dice()}。` : g.phase === "pick" ? "品を選んでいます。" : g.phase === "dest" ? "次の目的地を選んでいます。" : `目的地は<b>${esc(g.dest || "なし")}</b>。`;
+  say.innerHTML = `<div>${cname(pl.i)}の番（待っています）。</div><div>${l2}</div>`;
+  if (isHost() && s.kind === "人" && !NET.room.online.includes(s.uid))
+    btn("CPUに替える", () => pushNet({ k: "seat", i: pl.i, level: "ふつう" }), "sub");
+}
+// CPU の手：親の端末が考えて積む。考えるのに使う乱数は g.rand と別（種と手の番号から）＝ g の乱数は手の再生だけで進む
+function cpuNet(level) {
+  const n = NET.applied, gen = NET.gen; if (NET.pending === n || NET.thinking === n) return; NET.thinking = n;
+  setTimeout(() => {
+    if (!NET || NET.gen !== gen || NET.applied !== n || !isHost() || NET.busy) { if (NET && NET.thinking === n) NET.thinking = null; return; }
+    NET.thinking = null;
+    const r0 = g.rand; g.rand = E.rng((NET.room.seed ^ Math.imul(n + 1, 0x9E3779B1)) >>> 0);
+    let a;
+    try {
+      a = g.phase === "choose" ? { k: AI.decide(g, level) === "stay" ? "stay" : "roll" }
+        : g.phase === "move" ? { k: "move", path: AI.choosePath(g, level) }
+        : g.phase === "pick" ? { k: "pick", ids: AI.choosePicks(g, level) }
+        : { k: "dest", p: AI.chooseDest(g, level) };
+    } finally { g.rand = r0; }
+    pushNet(a);
+  }, g.phase === "choose" ? 600 : g.phase === "move" ? 150 : 0);
+}
+// 部屋で待つ：合言葉・席（二列）・始める（親だけ）。親は人数と、空いた席を CPU にするかを決める
+const LOBBY = ["空き", "やさしい", "ふつう", "つよい"];
+function renderLobby() {
+  NET.ui = "lobby"; g = null; NET.S = null;
+  const room = NET.room, ss = Net.seatsOf(room), host = isHost();
+  setup.n = room.n;
+  $("#shade").hidden = true; $("#pass").hidden = true; paint(); logDraw(); scoreDraw(); ZOOM = null; zoomTo(FULL);
+  $("#when").innerHTML = ""; $(".band").classList.remove("setup", "pick", "ev", "at"); acts.className = "row";
+  const ready = ss.slice(0, room.n).every(s => s.kind !== "空き");
+  say.innerHTML = `<div>合言葉　<b>${esc(NET.code)}</b></div><div>${host ? (ready ? "席がそろった。始める。" : "席を選んで、そろったら始める。") : ss.some(s => s.uid === NET.uid) ? "親が始めるのを待っています。" : "空いた席を選ぶ。"}</div>`;
+  acts.innerHTML = "";
+  if (host) for (const n of [2, 3, 4]) btn(`${K(n)}人`, () => NET.be.update(NET.code, { n }), room.n === n ? "on" : "sub");
+  const box = document.createElement("div"); box.className = "seats"; acts.appendChild(box);
+  for (const i of [0, 2, 1, 3]) {
+    const s = ss[i], c = document.createElement("div"), off = i >= room.n;
+    const sp = document.createElement("span"); sp.className = "seat"; sp.innerHTML = dot(i) + COLORS[i]; c.appendChild(sp);
+    const label = s.kind === "人" ? (s.uid === NET.uid ? "自分" : "人") : s.kind === "空き" ? (host ? "空き" : "座る") : SEATLBL[s.level || "ふつう"];
+    const b = document.createElement("button"); b.textContent = label; b.className = "sub"; c.appendChild(b);
+    if (s.kind === "人") b.disabled = true;
+    else if (host) b.onclick = () => { const k = LOBBY[(LOBBY.indexOf(s.kind === "空き" ? "空き" : s.level) + 1) % LOBBY.length];
+      NET.be.setSeat(NET.code, i, k === "空き" ? { kind: "空き" } : { kind: "コンピュータ", level: k }); };
+    else if (s.kind === "空き") b.onclick = () => NET.be.takeSeat(NET.code, i);
+    else b.disabled = true;
+    if (off) { c.className = "off"; c.setAttribute("aria-hidden", "true"); b.disabled = true; b.tabIndex = -1; }
+    box.appendChild(c);
+  }
+  if (host) { const sb = btn("始める", () => NET.be.update(NET.code, { state: "play" })); sb.disabled = !ready; }
+  btn("抜ける", () => { leaveNet(); setup.mode = "here"; renderSetup(); }, "sub");
+  requestAnimationFrame(fit);
+}
+if (DEBUG) window.__jintori = () => ({ net: NET && { code: NET.code, uid: NET.uid, applied: NET.applied, ui: NET.ui, desync: NET.desync, bad: NET.bad, host: isHost() },
+  t: g && g.t, over: !!(g && g.over), score: g && g.score, fp: g && Net && Net.fingerprint(g), owner: g && g.owner, logs: LOGS.slice() });
+renderSetup();
+{ const code = sessionStorage.getItem("jintori.room"); // 再読み込み：同じ部屋に戻って最初から再生する
+  if (code) netOpen(code).then(err => { if (err) { sessionStorage.removeItem("jintori.room"); netError(err); } }); }
+</script>
+</body>
+</html>
