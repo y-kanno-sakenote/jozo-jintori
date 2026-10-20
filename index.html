@@ -565,12 +565,12 @@ function rollShow(frames, done) {
     setTimeout(() => { if (gen !== genNow()) return; DICE.innerHTML = ""; rolling = false; done(); }, hold);
   };
   rolling = true;
-  if (CALM.matches) return stop(600);
+  // 「動きを減らす」設定の端末（iPhone で多い）でも、目が替わって止まる手応えは出す
   let j = frames.length;
   const tick = () => {
     if (gen !== genNow()) return; // 通信対戦で再生し直した（古い転がし）
-    if (!j) return stop(300);
-    diceDraw(face(j), j % 2 ? 14 : -10); // 傾きは替わるたびに左右（目から決まる）
+    if (!j) return stop(frames === ROLL_CPU ? 600 : 900); // 止まった目を読めるだけ見せる
+    diceDraw(face(j), CALM.matches ? 0 : j % 2 ? 14 : -10); // 傾きは替わるたびに左右（目から決まる）
     setTimeout(tick, frames[frames.length - j--]);
   };
   tick();
