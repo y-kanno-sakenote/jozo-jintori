@@ -437,7 +437,9 @@ function renderSetup() {
   acts.innerHTML = "";
   // 遊び方：この端末で遊ぶ（一台を回す・CPU）／部屋を作る／部屋に入る
   for (const [m, label] of [["here", "この端末で遊ぶ"], ["make", "部屋を作る"], ["join", "部屋に入る"]])
-    btn(label, () => { if (m === "make") return netOpen(null).then(err => err && netError(err)); setup.mode = m; setup.err = ""; renderSetup(); }, (setup.mode === m ? "on" : "sub") + " mode");
+    btn(label, () => { if (m === "make") { if (setup.busy) return; setup.busy = true; setup.mode = "here"; setup.err = "つないでいます…"; renderSetup();
+      return netOpen(null).then(err => { setup.busy = false; if (err) netError(err, "here"); else setup.err = ""; }); } // 押した手応えを先に出し、失敗の理由はいまの画面に出す
+      setup.mode = m; setup.err = ""; renderSetup(); }, (setup.mode === m ? "on" : "sub") + " mode");
   brk();
   if (setup.mode === "join") { // 合言葉（数字四桁）を入れて入る。空いた席は部屋の中で選ぶ
     const inp = document.createElement("input"); inp.id = "code"; inp.inputMode = "numeric"; inp.maxLength = 4; inp.autocomplete = "off";
@@ -462,6 +464,7 @@ function renderSetup() {
     box.appendChild(c);
   }
   btn("始める", start);
+  if (setup.err) { const m = document.createElement("span"); m.className = "err"; m.textContent = setup.err; acts.appendChild(m); } // 部屋を作るときの「つないでいます…」と失敗の理由
   requestAnimationFrame(fit); // 帯の高さが変わるので盤と線の位置を合わせ直す
 }
 function start() {
@@ -817,7 +820,7 @@ const mine = i => { const s = seatsNow()[i]; return !!s && s.kind === "人" && s
 const isHost = () => !!NET && (NET.S ? NET.S.host : NET.room && NET.room.host) === NET.uid;
 const genNow = () => NET ? NET.gen : 0; // 世代：最初から再生し直すたびに一つ進む。古い世代のタイマーは何もしない
 const seatPlayer = (s, i) => ({ name: COLORS[i], kind: s.kind === "人" ? "人" : "コンピュータ", level: s.kind === "人" ? null : s.level || "ふつう" });
-function netError(msg) { setup.mode = "join"; setup.err = msg; renderSetup(); }
+function netError(msg, mode) { setup.mode = mode || "join"; setup.err = msg; renderSetup(); }
 // その手を積める・当てられるか（積む前も、受け取って再生するときも同じ判定。席の持ち主は手の列から作った NET.S で見る）
 function legal(m) {
   const S = NET.S; if (!S || !m || typeof m.by !== "string") return false;
@@ -843,7 +846,8 @@ async function netOpen(code) {
       if (!r) return "その合言葉の部屋はない";
       if (r.state === "play" && !Net.seatsOf(r).slice(0, r.n).some(s => s.uid === BE.uid)) return "もう始まっている";
     }
-  } catch (e) { console.error(e); return "つながらない"; }
+  } catch (e) { console.error(e); const c = String(e && (e.code || e.message) || "");
+    return /PERMISSION|permission/.test(c) ? "部屋を作れなかった。続けて作るときは三十秒あけて" : /auth|network|Failed to fetch|import/.test(c) ? "つながらない（電波か、ブラウザの設定を確かめて）" : "つながらない"; }
   if (NET) leaveNet();
   sessionStorage.setItem("jintori.room", code); // 再読み込みで同じ部屋・同じ席に戻る
   g = null; LOGS.length = 0;
