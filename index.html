@@ -48,7 +48,9 @@
   #chips { pointer-events: none; }
   #chips text { font-size: calc(var(--lf, 13px) * .6); paint-order: stroke; stroke: var(--paper); stroke-width: 2; stroke-linejoin: round; }
   /* 盤の左上（県のない海）の記録：取った品・奪った色・失った色札を一行ずつ。新しい行ほど下、古い行は淡く */
-  #log, #score { pointer-events: none; }
+  #log, #score, #me, #dice { pointer-events: none; }
+  #dice rect { fill: var(--paper); stroke: var(--ink); } /* 点の目のサイコロ（盤の真ん中・止まったら消える） */
+  #dice circle { fill: var(--ink); } #dice .one { fill: var(--dest); } /* 一の目だけ赤（日本のサイコロ） */
   #log text, #score text { fill: var(--ink); } /* 右下の海に色の県の数（席ごとに一行） */
   #log .old { opacity: .5; }
   #log .box { fill: var(--tile); fill-opacity: .55; stroke: var(--line); stroke-width: 1; } /* 記録の箱（薄い枠で塗る） */
@@ -183,9 +185,9 @@ const svg = $("#map"), CTR = {};
     const P = t => [(ax + (bx - ax) * t).toFixed(1), (ay + (by - ay) * t).toFixed(1)];
     const [x1, y1] = P(c), [x2, y2] = P(1 - c);
     return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"></line>`; }).join("");
-  svg.innerHTML = out + `<g id="sea">${sea}</g><g id="chips"></g><g id="pcs"></g><g id="trace"></g><g id="nums"></g><g id="log"></g><g id="score"></g>`;
+  svg.innerHTML = out + `<g id="sea">${sea}</g><g id="chips"></g><g id="pcs"></g><g id="trace"></g><g id="nums"></g><g id="log"></g><g id="score"></g><g id="me"></g><g id="dice"></g>`;
 })();
-const TILES = [...svg.querySelectorAll("g[data-p]")], TRACE = $("#trace"), PCS = $("#pcs"), NUMS = $("#nums"), CHIPS = $("#chips"), LOG = $("#log"), SCORE = $("#score");
+const TILES = [...svg.querySelectorAll("g[data-p]")], TRACE = $("#trace"), PCS = $("#pcs"), NUMS = $("#nums"), CHIPS = $("#chips"), LOG = $("#log"), SCORE = $("#score"), ME = $("#me"), DICE = $("#dice");
 let LF = 13;
 // 盤はふだん全国。なぞる間だけ、いる県から目の数で届く範囲に寄せる。県名の大きさ（LF）は全国のときの値のまま＝寄せると字も大きくなる
 const FULL = [14, -42, 860, 692]; // 上にも余白（北海道が画面の上端で切れないように） // 下にも余白（下寄せにしたので沖縄が線につかないように） // 左右に約二十八ずつ余白
@@ -274,7 +276,7 @@ function fit() {
   if (Math.abs(r.height - lastH) > .5) { lastH = r.height; logDraw(); scoreDraw(); } // 盤の高さが変わったら左上の文字の位置（visTop）を測り直す
   const s = Math.min(r.width / FULL[2], r.height / FULL[3]);
   const lf = LF; LF = Math.min(20, Math.max(12, 11 / s));
-  if (LF !== lf) { logDraw(); scoreDraw(); } // 記録と色の県の数の字の大きさは県名に合わせる
+  if (LF !== lf) { logDraw(); scoreDraw(); meDraw(meWho); } // 記録と色の県の数・自分の色の字の大きさは県名に合わせる
   svg.style.setProperty("--lf", LF.toFixed(1) + "px");
   for (const c of NUMS.querySelectorAll("circle")) c.setAttribute("r", (LF * .62).toFixed(1));
 }
@@ -410,7 +412,7 @@ function paint(who) {
     t.classList.toggle("mv", !!g && !g.over && o !== undefined && E.free(g, p).length > 0); // おしまいでは全部決まりなので濃く
     t.classList.toggle("dest", !!g && p === g.dest && !g.over);
   }
-  route = []; tracing = false; TRACE.innerHTML = ""; NUMS.innerHTML = "";
+  route = []; tracing = false; TRACE.innerHTML = ""; NUMS.innerHTML = ""; DICE.innerHTML = ""; // 転がしの途中で画面が替わったとき（通信対戦の再生し直し等）にサイコロを残さない
   const ch = !g || g.over ? null : who || E.cur(g);
   CHIPS.innerHTML = !ch ? "" : E.PREFS.filter(p => g.chips[p][ch.i] > 0 && E.free(g, p).length).map(p => {
     // 1〜2字の県は県名の上の真ん中（駒は県名の下）。3字の県は駒が上なので、二行目の一字の左（右端の北海道で二字の数が画面から切れないよう、左へ伸ばす）
@@ -429,7 +431,7 @@ function status(who) { // who＝いま見せている手の人（指したあと
   $("#when").innerHTML = g.over ? "おしまい" : `${cname(pl.i)}の番　${left > 1 ? "あと" + K(left) + "手" : "最後の手"}`;
   const odd = NET ? NET.bad + NET.desync : 0; // 通信対戦：捨てた手・指紋のずれの数（隅に小さく）
   $("#warn").textContent = odd ? `ずれ${K(odd)}` : "";
-  scoreDraw();
+  scoreDraw(); meDraw(who);
 }
 const acts = $("#acts"), say = $("#say");
 const btn = (label, fn, cls) => { const b = document.createElement("button"); b.textContent = label;
@@ -438,7 +440,7 @@ const brk = () => { const d = document.createElement("div"); d.className = "brea
 
 // ---- 始まり：人数と、席ごとに人かコンピュータ（強さ） ----
 function renderSetup() {
-  g = null; $("#shade").hidden = true; paint(); logDraw(); scoreDraw(); ZOOM = null; zoomTo(FULL);
+  g = null; $("#shade").hidden = true; paint(); logDraw(); scoreDraw(); meDraw(); ZOOM = null; zoomTo(FULL);
   $("#when").innerHTML = ""; // 題字は盤の左上（logDraw）。空の行は高さ0になり、そのぶん盤が大きくなる
   say.innerHTML = ""; $(".band").classList.add("setup"); // 説明文は盤の左上の海（logDraw の INTRO）。帯は人数・席・始めるだけ
   acts.innerHTML = "";
@@ -489,7 +491,7 @@ function next() {
   } else cpuTurn();
 }
 $("#passb").onclick = () => { $("#pass").hidden = true; renderChoose(); };
-function render(who) { chooseUp = false; paint(who); status(who); LOG.style.display = SCORE.style.display = ""; requestAnimationFrame(fit); }
+function render(who) { chooseUp = false; paint(who); status(who); LOG.style.display = SCORE.style.display = ME.style.display = ""; requestAnimationFrame(fit); }
 let chooseUp = false, peeked = null; // chooseUp＝人の手番の振る前の画面が出ている（県を触ると品が出る）。peeked＝いま出している県
 
 // 巡ごとに最初に振る人がずれる。二人だと巡の変わり目で同じ人が二度続くので、そのときだけわけを一行（人の手もコンピュータの手も）
@@ -527,24 +529,43 @@ function peek(p) {
   let rest = 0;
   while (over() && box.childElementCount > 1) { tail.remove(); box.lastElementChild.remove(); tail.textContent = `ほか${K(++rest)}品`; box.appendChild(tail); }
 }
-// サイコロ：E.roll(g) が決めた目（g.dice）へ、文の「目は◯。」の字を数回替えて止める。
-// 替わる順は目から決まる＝乱数は引かない。間はだんだん延びる。動きを減らす設定では転がさずに目を出す
+// サイコロ：E.roll(g) が決めた目（g.dice）へ、盤の真ん中の点の目のサイコロを数回替えて（少し傾けて）止め、止まったら消す。
+// 替わる順と傾きは目から決まる＝乱数は引かない。間はだんだん延びる。止まった目は文の「目は◯。」にも出す。
+// 動きを減らす設定では転がさずに、止まった目を少し（0.6秒）見せる。人・CPU・通信対戦のほかの人の振りで同じ
 const ROLL_HUMAN = [60, 70, 85, 100, 125, 160], ROLL_CPU = [60, 80, 110, 150];
 let rolling = false;
+// 目 v の点の位置（-1〜1 の格子）
+const PIPS = { 1: [[0, 0]], 2: [[-1, -1], [1, 1]], 3: [[-1, -1], [0, 0], [1, 1]], 4: [[-1, -1], [1, -1], [-1, 1], [1, 1]],
+  5: [[-1, -1], [1, -1], [0, 0], [-1, 1], [1, 1]], 6: [[-1, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [1, 1]] };
+// 一つの辺は盤の幅の約五分の一（盤の単位で約百六十＝375幅で約七十px・PCで約百四十px）。二つなら横に並べる。全国の盤の真ん中に
+// （振るのはいつも全国の盤＝寄せる前。寄せ・戻しの動きの途中でも置き場所が揺れないよう FULL で決める）
+function diceDraw(vs, tilt) {
+  const S = FULL[2] * .19, gap = S * .25, n = vs.length, cx = FULL[0] + FULL[2] / 2, cy = FULL[1] + FULL[3] / 2;
+  DICE.innerHTML = vs.map((v, k) => {
+    const x = cx + (k - (n - 1) / 2) * (S + gap), y = cy, a = tilt ? tilt * (k ? -1 : 1) : 0, o = S * .27, r = S * (v === 1 ? .14 : .09);
+    return `<g transform="translate(${x.toFixed(1)},${y.toFixed(1)}) rotate(${a})"><rect x="${(-S / 2).toFixed(1)}" y="${(-S / 2).toFixed(1)}" width="${S.toFixed(1)}" height="${S.toFixed(1)}" rx="${(S * .16).toFixed(1)}" stroke-width="${(S * .03).toFixed(1)}"></rect>`
+      + PIPS[v].map(([px, py]) => `<circle${v === 1 ? ' class="one"' : ""} cx="${(px * o).toFixed(1)}" cy="${(py * o).toFixed(1)}" r="${r.toFixed(1)}"></circle>`).join("") + "</g>";
+  }).join("");
+}
 function rollShow(frames, done) {
-  const face = j => g.dice.map((d, n) => K((d - 1 + (j && j * 4 + j * j + n * 3)) % 6 + 1)).join("と"); // j=0 で出た目。隣り合う字は必ず違う
-  if (CALM.matches) { say.innerHTML = `<div>目は${dice()}。</div>`; return done(); }
-  rolling = true; let j = frames.length; const gen = genNow();
+  const face = j => g.dice.map((d, n) => (d - 1 + (j && j * 4 + j * j + n * 3)) % 6 + 1); // j=0 で出た目。隣り合う目は必ず違う
+  const gen = genNow(), stop = hold => { // 止まった目を見せてから消して次へ
+    diceDraw(face(0), 0); say.innerHTML = `<div>目は${dice()}。</div>`;
+    setTimeout(() => { if (gen !== genNow()) return; DICE.innerHTML = ""; rolling = false; done(); }, hold);
+  };
+  rolling = true;
+  if (CALM.matches) return stop(600);
+  let j = frames.length;
   const tick = () => {
     if (gen !== genNow()) return; // 通信対戦で再生し直した（古い転がし）
-    say.innerHTML = `<div>目は${face(j)}。</div>`;
-    if (!j) return setTimeout(() => { if (gen !== genNow()) return; rolling = false; done(); }, 250); // 止まった目を読ませてから
+    if (!j) return stop(300);
+    diceDraw(face(j), j % 2 ? 14 : -10); // 傾きは替わるたびに左右（目から決まる）
     setTimeout(tick, frames[frames.length - j--]);
   };
   tick();
 }
 function renderMove() {
-  render(); acts.innerHTML = ""; LOG.style.display = SCORE.style.display = "none"; // 寄せた盤では左上の記録・右下の色の県の数が県にかかる
+  render(); acts.innerHTML = ""; LOG.style.display = SCORE.style.display = ME.style.display = "none"; // 寄せた盤では左上の記録・自分の色・右下の色の県の数が県にかかる
   say.innerHTML = `<div>目は${dice()}。指でなぞる。</div><div>目的地は${esc(g.dest || "なし")}。</div>`;
   zoomTo(reachView()); // 文が入って盤の大きさが決まってから寄せる
 }
@@ -695,6 +716,24 @@ function scoreDraw() {
   const F = LF * 1.3, lh = F * 1.45, x = FULL[0] + FULL[2] - 40, yb = FULL[1] + FULL[3] - 34, n = g.players.length;
   SCORE.innerHTML = g.players.map((p, i) => `<text x="${x}" y="${(yb - (n - 1 - i) * lh).toFixed(1)}" font-size="${F.toFixed(1)}" text-anchor="end">`
     + `${sname(p.i)}　${K(E.countOf(g, p.i))}県</text>`).join("");
+}
+// 自分の色：記録の箱のすぐ上（左端は箱と同じ＝沖縄の六角の左端）に「あなた　●紅」。丸と名前の字（色だけに頼らない）。
+// 誰の色か：人が一人の卓はその人・一台を回す卓は番の人（CPUの番は出さない）・通信対戦は自分の席（座っていなければ出さない）。おしまいでは出さない。
+// 盤の単位で（記録の箱の上端＝228−六行の高さ）：375×667・390×844 は LF＝20 で箱の上端 約七・名前の字 四十 → 字の上端 約−三十六（見えている上端は 375×667 で約−二百六十・390×844 で約−四百三十・選ぶ板の間でも−四十二）。
+// PC 1280×800 は LF≒12.3 で箱の上端 約九十二・字 約二十五 → 字の上端 約七十（見えている上端は約−四十五）。横は「若草」でも x≦約二百四十＝北海道（x≧七百八十八）にも、どの県にも届かない
+let meWho = null; // いま見せている手の人（盤の字の大きさが変わって描き直すとき用）
+function meDraw(who) {
+  meWho = who || null;
+  const c = !g || g.over ? null : who || E.cur(g);
+  let i = null;
+  if (c) if (NET) { const p = g.players.find(p => mine(p.i)); i = p ? p.i : null; }
+    else { const hs = g.players.filter(p => p.kind === "人"); i = hs.length === 1 ? hs[0].i : c.kind === "人" ? c.i : null; }
+  if (i === null) { ME.innerHTML = ""; return; }
+  const f = LF * 1.15, bh = LOG_N * f * 1.42 + f * 1.1, F = LF * 2, a = F * .55, x = CTR["沖縄"][0] - 33 * Math.sqrt(3) / 2;
+  const yb = 228 - bh - F * .2, r = F * .36, cx = x + a * 3 + a * .6 + r; // 「あなた」三字の右に少しあけて丸、その右に名前
+  ME.innerHTML = `<text x="${x.toFixed(1)}" y="${yb.toFixed(1)}" font-size="${a.toFixed(1)}" style="fill:var(--mute)">あなた</text>`
+    + `<circle cx="${cx.toFixed(1)}" cy="${(yb - F * .34).toFixed(1)}" r="${r.toFixed(1)}" fill="var(--k${i})"></circle>`
+    + `<text x="${(cx + r + F * .2).toFixed(1)}" y="${yb.toFixed(1)}" font-size="${F.toFixed(1)}" font-weight="600" fill="var(--k${i})">${COLORS[i]}</text>`;
 }
 function logPush(s) { LOGS.push(s); if (LOGS.length > LOG_N) LOGS.shift(); logDraw(true); }
 // 指したあと：道を残して、取った品・奪った色・失った色札は盤の左上の記録に、それ以外は操作帯に一行ずつ流す
