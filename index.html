@@ -24,6 +24,9 @@
   body { margin: 0; background: var(--edge); color: var(--ink); overflow: hidden;
     font-family: 'Shippori Mincho', 'Hiragino Mincho ProN', 'Yu Mincho', serif; -webkit-text-size-adjust: 100%; }
   /* 1画面：上に盤、下に操作帯。ページはスクロールしない */
+  /* 遊んでいる間だけ画面の右上に「やめる」。押し間違えないよう小さく、確かめてから最初の画面へ */
+  #quit { position: fixed; top: calc(6px + env(safe-area-inset-top)); right: calc(6px + env(safe-area-inset-right)); z-index: 5; font-size: 13px; padding: 3px 10px; min-height: 0;
+    background: var(--paper); color: var(--mute); border: 1px solid var(--line); border-radius: 4px; }
   .leaf { max-width: 48rem; margin: 0 auto; height: 100vh; height: 100dvh; background: var(--paper);
     display: flex; flex-direction: column; overflow: hidden; }
   svg { flex: 1 1 0; min-height: 0; width: 100%; display: block; touch-action: none; user-select: none; -webkit-user-select: none; }
@@ -138,6 +141,7 @@
 </head>
 <body>
 <div class="leaf">
+  <button id="quit" hidden>やめる</button>
   <svg id="map" viewBox="42 6 804 623" preserveAspectRatio="xMidYMid meet" role="group" aria-label="都道府県の盤"></svg>
   <div class="band">
     <div class="stat"><span id="when"></span><span id="warn"></span></div>
@@ -406,6 +410,7 @@ const nameLink = id => { const e = E.ENT[id], u = e.urls[0];
 // 盤：県は持ち主の色。駒は県の下の方に席の色で（手番の駒は縁どり）。
 // 色札は who（いま見せている手の人。無ければ手番の人）の分だけ、その人の色の漢数字で。品の残っていない県の色札は使えないので出さない
 function paint(who) {
+  $("#quit").hidden = !g || g.over;
   for (const el of TILES) {
     const p = el.dataset.p, t = el.firstChild, o = g ? g.owner[p] : undefined;
     for (let i = 0; i < 4; i++) t.classList.toggle("o" + i, o === i);
@@ -472,6 +477,12 @@ function renderSetup() {
   if (setup.err) { const m = document.createElement("span"); m.className = "err"; m.textContent = setup.err; acts.appendChild(m); } // 部屋を作るときの「つないでいます…」と失敗の理由
   requestAnimationFrame(fit); // 帯の高さが変わるので盤と線の位置を合わせ直す
 }
+// やめる：確かめてから、部屋を抜けて読み込み直す（動いている手やタイマーを残さず最初の画面へ戻る）
+$("#quit").onclick = () => {
+  if (!confirm("やめて最初の画面に戻る？")) return;
+  if (NET) leaveNet(); else sessionStorage.removeItem("jintori.room");
+  location.reload();
+};
 function start() {
   const seats = setup.seat.slice(0, setup.n).map((k, i) => ({ name: COLORS[i], kind: k === "人" ? "人" : "コンピュータ", level: k === "人" ? null : k }));
   g = E.newGame({ seed: (Math.random() * 2 ** 32) >>> 0, seats });
