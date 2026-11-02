@@ -8,13 +8,13 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@400;600&display=swap" rel="stylesheet">
 <style>
-  :root { --paper: #f5eedd; --edge: #e9dfc8; --ink: #2b2620; --mute: #8a7e6e; --line: #d8cdb6;
+  :root { --paper: #f5eedd; --edge: #e9dfc8; --ink: #2b2620; --mute: #8a7e6e; --lbl: #6e6355; --line: #d8cdb6;
     --tile: #eee6d2; --dest: #9b2f2a; --btn: #8c3a2b;
     /* 席の色（県の塗り・駒）：紅・藍・若草・山吹。明るさに段差（藍→紅→若草→山吹→持ち主なしの順に淡く）＝白黒・色覚の違いでも見分ける */
     --c0: #e39c8f; --c1: #6a87bb; --c2: #b2d48f; --c3: #f2db8a;
     --k0: #a8392c; --k1: #2f4f86; --k2: #4f7a2c; --k3: #a8750f; }
   @media (prefers-color-scheme: dark) {
-    :root { --paper: #1f1c17; --edge: #191612; --ink: #e6ddcc; --mute: #9d917f; --line: #3a342b;
+    :root { --paper: #1f1c17; --edge: #191612; --ink: #e6ddcc; --mute: #9d917f; --lbl: #9d917f; --line: #3a342b;
       --tile: #2a251e; --dest: #c4554b; --btn: #d99a7e;
       --c0: #8f3f33; --c1: #263d6b; --c2: #557a30; --c3: #94761f;
       --k0: #f0a596; --k1: #a9c3f0; --k2: #bfe09a; --k3: #f3d27f; }
@@ -25,6 +25,7 @@
     font-family: 'Shippori Mincho', 'Hiragino Mincho ProN', 'Yu Mincho', serif; -webkit-text-size-adjust: 100%; }
   /* 1画面：上に盤、下に操作帯。ページはスクロールしない */
   /* 遊んでいる間だけ画面の右上に「やめる」。押し間違えないよう小さく、確かめてから最初の画面へ */
+  body:has(#pass:not([hidden])) #quit { display: none; } /* 番・条件の画面の上では「やめる」を出さない */
   #quit { position: fixed; top: calc(6px + env(safe-area-inset-top)); right: calc(6px + env(safe-area-inset-right)); z-index: 5; font-size: 13px; padding: 3px 10px; min-height: 0;
     background: var(--paper); color: var(--mute); border: 1px solid var(--line); border-radius: 4px; }
   .leaf { max-width: 48rem; margin: 0 auto; height: 100vh; height: 100dvh; background: var(--paper);
@@ -33,6 +34,7 @@
   .tile { fill: var(--tile); stroke: var(--paper); stroke-width: 1.5; }
   .tile.o0 { fill: var(--c0); } .tile.o1 { fill: var(--c1); } .tile.o2 { fill: var(--c2); } .tile.o3 { fill: var(--c3); }
   .tile.mv { fill-opacity: .6; } /* まだ動く県（品が残っている）は淡く。取り尽くされて色が決まった県だけ濃い */
+  .tile.me { stroke: var(--ink); stroke-width: 4; } /* 自分のスタートの県（最初の手を指すまで）。墨の縁＝手番の駒の縁と同じ色。目的地の赤い縁とは別の色（紅の席でも見分ける） */
   .tile.dest { stroke: var(--dest); stroke-width: 6; }
   .ring { fill: none; stroke: var(--paper); stroke-width: 2; pointer-events: none; display: none; }
   .tile.dest ~ .ring { display: inline; }
@@ -125,6 +127,10 @@
   .pass { position: fixed; inset: 0; background: var(--paper); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 24px; }
   .pass[hidden] { display: none; }
   .pass p { margin: 0; font-size: 28px; letter-spacing: .3em; }
+  /* 条件の一画面（はじめに一回）：同じ画面に「あなた ●紅」と二行（いる県と目的地・勝ち方）。盤の左上の「あなた　●紅」と同じ形 */
+  .pass small { font-size: 15px; color: var(--lbl); letter-spacing: .1em; margin-right: .6em; }
+  .pass .cd { font-size: 16px; line-height: 1.8; text-align: center; padding: 0 16px; }
+  .pass .cd:empty { display: none; }
   /* 帳面：結びで下から一覧（板の中だけスクロール） */
   .shade { position: fixed; inset: 0; background: rgba(0,0,0,.25); display: flex; align-items: flex-end; justify-content: center; }
   .shade[hidden] { display: none; }
@@ -149,7 +155,7 @@
     <div class="row" id="acts"></div>
   </div>
 </div>
-<div class="pass" id="pass" hidden><p id="passn"></p><button id="passb">始める</button></div>
+<div class="pass" id="pass" hidden><p id="passn"></p><div class="cd" id="passc"></div><button id="passb">始める</button></div>
 <div class="shade" id="shade" hidden>
   <div class="sheet"><div class="hd"><span id="shn">帳面</span><button class="sub" id="shx">閉じる</button></div><div id="book"></div></div>
 </div>
@@ -488,7 +494,18 @@ function start() {
   g = E.newGame({ seed: (Math.random() * 2 ** 32) >>> 0, seats });
   $(".band").classList.remove("setup"); // 文の欄を三行の固定に戻す
   LOGS.length = 0; logDraw(); // 記録は一局ごとに空から
+  // 人が一人の卓：はじめに条件の一画面を一回（CPUが先手でも、閉じてから動く）。二人以上の卓は各人の最初の番で（next）
+  const hs = g.players.filter(p => p.kind === "人");
+  if (hs.length === 1) { render(); return showCond(hs[0].i, next); }
   next();
+}
+// 条件の一画面：あなたの色・いる県と目的地・勝ち方。「始める」で閉じて then へ（「◯◯の番」の一画面を流用）
+let passThen = null;
+function showCond(i, then) {
+  $("#passn").innerHTML = `<small>あなた</small>${dot(i)}${cname(i)}`;
+  $("#passc").innerHTML = `<div>スタートは<b>${esc(g.players[i].pos)}</b>。目的地は<b>${esc(g.dest || "なし")}</b>。</div>`
+    + `<div>${K(g.perTurns)}手で、自分の色の県が多い人の勝ち。</div>`;
+  passThen = then; $("#pass").hidden = false;
 }
 const humans = () => g.players.filter(p => p.kind === "人").length;
 // 手番の頭：人が二人以上いる卓では「◯◯の番」の一画面を挟む（一台を回す）
@@ -497,11 +514,15 @@ function next() {
   if (g.over) return renderEnd();
   const pl = E.cur(g);
   if (pl.kind === "人") {
-    if (humans() > 1) { $("#passn").innerHTML = `${cname(pl.i)}の番`; $("#pass").hidden = false; render(); }
+    if (humans() > 1) { // 最初の番だけ「◯◯の番」の代わりに、その人の条件
+      if (pl.moves === 0) showCond(pl.i, renderChoose);
+      else { $("#passn").innerHTML = `${cname(pl.i)}の番`; $("#passc").innerHTML = ""; passThen = renderChoose; $("#pass").hidden = false; }
+      render();
+    }
     else renderChoose();
   } else cpuTurn();
 }
-$("#passb").onclick = () => { $("#pass").hidden = true; renderChoose(); };
+$("#passb").onclick = () => { $("#pass").hidden = true; const f = passThen || renderChoose; passThen = null; f(); };
 function render(who) { chooseUp = false; paint(who); status(who); LOG.style.display = SCORE.style.display = ME.style.display = ""; requestAnimationFrame(fit); }
 let chooseUp = false, peeked = null; // chooseUp＝人の手番の振る前の画面が出ている（県を触ると品が出る）。peeked＝いま出している県
 
@@ -523,7 +544,7 @@ function renderChoose() {
   const sb = btn("とどまる", () => { if (rolling) return; from = null; moved(play({ k: "stay" })); }, "sub");
   const tb = btn("取った品", () => showBook(E.cur(g).i), "sub"); // 手番の人の分（同じ行に並べる＝操作帯の高さは変わらない）
 }
-function chooseSay() { peeked = null; say.innerHTML = `<div>いまは<b>${esc(POS())}</b>。目的地は<b>${esc(g.dest || "なし")}</b>。</div>`; }
+function chooseSay() { peeked = null; say.innerHTML = `<div>目的地は<b>${esc(g.dest || "なし")}</b>。</div>`; } // いる県は盤の左上「いま　山形」と墨の縁で見える
 // 振る前に県を触る：一行目に県とその県の自分の色札、二・三行目に残っている品とコストの点。
 // 三行に入りきらない品は「ほか◯品」。同じ県をもう一度触るか、県の外を触るともとの文に戻る。
 // 県名は出来事の行と同じ点線の下線＝押すと帳面の板に、その県の全部の品と持ち主とコスト（prefBook）
@@ -739,12 +760,19 @@ function meDraw(who) {
   let i = null;
   if (c) if (NET) { const p = g.players.find(p => mine(p.i)); i = p ? p.i : null; }
     else { const hs = g.players.filter(p => p.kind === "人"); i = hs.length === 1 ? hs[0].i : c.kind === "人" ? c.i : null; }
+  // 自分のスタートの県：最初の手を指すまで（自分の番では振る前まで）、その県に墨の縁。上の字「いま　山形」と盤の駒の県を結ぶ
+  const me = i === null ? null : g.players[i], st = me && me.moves === 0 && !(g.cur === i && g.phase !== "choose") ? me.pos : null;
+  for (const el of TILES) el.firstChild.classList.toggle("me", el.dataset.p === st);
   if (i === null) { ME.innerHTML = ""; return; }
   const f = LF * 1.15, bh = LOG_N * f * 1.42 + f * 1.1, F = LF * 2, a = F * .55, x = CTR["沖縄"][0] - 33 * Math.sqrt(3) / 2;
   const yb = 228 - bh - F * .2, r = F * .36, cx = x + a * 3 + a * .6 + r; // 「あなた」三字の右に少しあけて丸、その右に名前
-  ME.innerHTML = `<text x="${x.toFixed(1)}" y="${yb.toFixed(1)}" font-size="${a.toFixed(1)}" style="fill:var(--mute)">あなた</text>`
+  // 名前の右に「いま」（小さく・淡く＝「あなた」と同じ形）と、いる県（名前と同じ大きさ・墨の字）。
+  // 盤の単位で（LF＝20）：名前の左 約百六十・「若草」の右 約二百四十 → 県名の右は「鹿児島」でも約四百四十（PC は約二百九十）＜六四〇＝北海道（x≧七八八）にも右上の「やめる」にも届かない
+  ME.innerHTML = `<text x="${x.toFixed(1)}" y="${yb.toFixed(1)}" font-size="${a.toFixed(1)}" style="fill:var(--lbl)">あなた</text>`
     + `<circle cx="${cx.toFixed(1)}" cy="${(yb - F * .34).toFixed(1)}" r="${r.toFixed(1)}" fill="var(--k${i})"></circle>`
-    + `<text x="${(cx + r + F * .2).toFixed(1)}" y="${yb.toFixed(1)}" font-size="${F.toFixed(1)}" font-weight="600" fill="var(--k${i})">${COLORS[i]}</text>`;
+    + `<text x="${(cx + r + F * .2).toFixed(1)}" y="${yb.toFixed(1)}" font-size="${F.toFixed(1)}" font-weight="600"><tspan fill="var(--k${i})">${COLORS[i]}</tspan>`
+    + `<tspan dx="${(F * .5).toFixed(1)}" font-size="${a.toFixed(1)}" font-weight="400" style="fill:var(--lbl)">いま</tspan>`
+    + `<tspan dx="${(a * .6).toFixed(1)}" style="fill:var(--ink)">${esc(me.pos)}</tspan></text>`;
 }
 function logPush(s) { LOGS.push(s); if (LOGS.length > LOG_N) LOGS.shift(); logDraw(true); }
 // 指したあと：道を残して、取った品・奪った色・失った色札は盤の左上の記録に、それ以外は操作帯に一行ずつ流す
@@ -920,7 +948,14 @@ function onRoom(room) {
   if (NET.room && Net.movesOf(room).length < Net.movesOf(NET.room).length) return; // 古い知らせ（手は足すだけなので、少ない方は古い）
   NET.room = room;
   if (room.state !== "play") { claimLobbyHost(room); return renderLobby(); }
-  if (!g) { rebuild(); return netNext(); } // 入ったとき・再読み込みのとき：最初から再生して追いつく
+  if (!g) { // 入ったとき・再読み込みのとき：最初から再生して追いつく
+    const fresh = NET.ui === "lobby"; // 部屋の画面から始まった＝はじめの一回。再読み込みで戻ったとき（NET.ui は空）は出さない
+    rebuild(); netNext();
+    const me = fresh && g.players.find(p => mine(p.i));
+    // 条件の一画面を閉じるまで、ほかの席の手の再生と CPU の手（親の端末）を待たせる（busy の間は pump も cpuNet も進まない）
+    if (me) { NET.busy = true; showCond(me.i, idle); }
+    return;
+  }
   if (NET.ui === "mine") { // 自分の番の間（流しを含む）は自分の画面のまま。その間にほかの手が積まれていたら（席を替えられた等）最初から
     if (g.t === NET.mineT && !g.over && Net.movesOf(room).length > NET.applied) resync("番の間にほかの手"); // 番を終えたあとの手は、流しのあとで当てる
     return;
