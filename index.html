@@ -103,7 +103,7 @@
   .nw { white-space: nowrap; } /* 品名とコストの点をひとかたまりに（品の間の「、」でだけ折る） */
   .say .pv-it span { white-space: nowrap; margin-right: 1em; }
   .say .pv i.d, .say .pv-it i.d { margin: 0 0 0 3px; }
-  .say .tap { text-decoration: underline dotted; text-underline-offset: 3px; cursor: pointer; }
+  .say .tap, #book .tap { text-decoration: underline dotted; text-underline-offset: 3px; cursor: pointer; }
   .tile.cand { stroke: var(--dest); stroke-width: 3; stroke-dasharray: 4 4; } /* 行事：目的地に選べる県 */ /* 選ぶ間も盤と道を半分近く残す */
   #acts.pick { flex: 1 1 auto; min-height: 0; flex-wrap: nowrap; flex-direction: column; align-items: stretch; }
   /* 選ぶ板：下からせり上がる。品が多いときだけ板の中でスクロール */
@@ -115,6 +115,11 @@
   .mk i.d { margin: 0 0 0 3px; } /* 色札一枚＝点一つ（品の右＝コスト・見出しの右＝その県の自分の色札。使う分は白抜き） */
   .mk label:has(input:disabled) { color: var(--mute); } /* 残りの色札では払えない品 */
   .mk .ph { font-size: 13px; color: var(--mute); letter-spacing: .1em; padding-top: 6px; display: flex; justify-content: space-between; }
+  /* 品の一行解説：選ぶ板は品名の横の「？」で（品名を押すのは「選ぶ」なので）、板（帳面・県・取った品）は品名を押して、その下に一行。開くのは一つだけ */
+  .mk .q { border: 0; padding: 0 10px; min-height: 40px; font-size: 13px; color: var(--lbl); vertical-align: middle; }
+  .mk .nt + label { border-top: 1px solid var(--line); }
+  .nt { font-size: 13px; color: var(--lbl); line-height: 1.6; padding-bottom: 8px; }
+  #book .nt { padding-bottom: 2px; }
   .mkb { flex: none; display: flex; gap: 8px; padding-top: 8px; }
   button { font: inherit; font-size: 15px; color: var(--btn); background: transparent; border: 1px solid var(--btn);
     border-radius: 3px; padding: 8px 14px; cursor: pointer; }
@@ -160,6 +165,7 @@
   <div class="sheet"><div class="hd"><span id="shn">帳面</span><button class="sub" id="shx">閉じる</button></div><div id="book"></div></div>
 </div>
 <script src="data/jozo_data.js"></script>
+<script src="data/notes.js"></script>
 <script src="data/events.js"></script>
 <script src="js/engine.js"></script>
 <script src="js/ai.js"></script>
@@ -410,8 +416,11 @@ svg.addEventListener("pointercancel", () => { waiting = false; tracing = false; 
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const dot = i => `<i class="d" style="background:var(--k${i})"></i>`;
 const cname = i => `<span style="color:var(--k${i})">${COLORS[i]}</span>`; // 席の名前を席の色の字で
+const note = id => (window.JOZO_NOTES || {})[E.ENT[id].pref + "|" + E.ENT[id].name]; // 品の一行解説（data/notes.js）
+// 板の品名：解説があれば押すと下に一行（出典はその行の末に）。解説が無い品は前どおり出典へのリンク
 const nameLink = id => { const e = E.ENT[id], u = e.urls[0];
-  return u ? `<a href="${esc(u)}" target="_blank" rel="noopener">${esc(e.name)}</a>` : esc(e.name); };
+  if (note(id)) return `<span class="tap" data-n="${id}">${esc(e.name)}</span>`;
+  return u ?`<a href="${esc(u)}" target="_blank" rel="noopener">${esc(e.name)}</a>` : esc(e.name); };
 
 // 盤：県は持ち主の色。駒は県の下の方に席の色で（手番の駒は縁どり）。
 // 色札は who（いま見せている手の人。無ければ手番の人）の分だけ、その人の色の漢数字で。品の残っていない県の色札は使えないので出さない
@@ -685,7 +694,7 @@ function renderPick() {
     h.innerHTML = `<span>${heads.length > 1 ? K(i + 1) + "　" : ""}${esc(x.pref)}</span><span data-c="${i}"></span>`; box.appendChild(h);
     for (const id of x.ids) {
       const l = document.createElement("label");
-      l.innerHTML = `<input type="checkbox" value="${id}" data-i="${i}"><span class="nm">${esc(E.ENT[id].name)}</span><span>${pips(pl.i, x.cost[id])}</span>`;
+      l.innerHTML = `<input type="checkbox" value="${id}" data-i="${i}"><span class="nm">${esc(E.ENT[id].name)}${note(id) ? `<button type="button" class="q" data-n="${id}" aria-label="${esc(E.ENT[id].name)}とは">？</button>` : ""}</span><span>${pips(pl.i, x.cost[id])}</span>`;
       box.appendChild(l);
     }
   }
@@ -706,6 +715,10 @@ function renderPick() {
     b.textContent = ids().length ? "取る" : "貯めておく";
   };
   box.onchange = sync; sync();
+  // 「？」：その品の下に一行（もう一度押すと閉じる・別の品の「？」で替わる）。選ぶ（チェック）には響かせない
+  box.onclick = e => { const q = e.target.closest(".q"); if (!q) return; e.preventDefault();
+    const open = box.querySelector(".nt"), same = open && open.dataset.n === q.dataset.n; if (open) open.remove(); if (same) return;
+    const d = document.createElement("div"); d.className = "nt"; d.dataset.n = q.dataset.n; d.textContent = note(+q.dataset.n); q.closest("label").after(d); d.scrollIntoView({ block: "nearest" }); };
 }
 // 色札の点：n 枚のうち、はじめの rest 枚は塗り・残りは白抜き（使う分）
 const pips = (i, n, rest = n) => Array.from({ length: n }, (_, k) => `<i class="d" style="${k < rest ? "background:" : "border:1px solid "}var(${i === null ? "--mute" : "--k" + i})"></i>`).join(""); // i＝null は誰の色でもない点
@@ -866,6 +879,12 @@ function prefBook(p) {
     return `<li>${nameLink(id)}　${h !== undefined ? cname(h) : '<span class="src">残っている</span>'}${pips(h !== undefined ? h : me, E.costOf(g, id))}</li>`; }).join("") + "</ul>";
   $("#shade").hidden = false;
 }
+// 板の品名を押す：その行（li）の下に一行と出典。もう一度押すと閉じる・別の品で替わる（開くのは一つだけ）
+$("#book").addEventListener("click", e => { const t = e.target.closest("[data-n]"); if (!t) return;
+  const open = $("#book .nt"), same = open && open.dataset.n === t.dataset.n; if (open) open.remove(); if (same) return;
+  const id = +t.dataset.n, u = E.ENT[id].urls[0], d = document.createElement("div"); d.className = "nt"; d.dataset.n = id;
+  d.innerHTML = esc(note(id)) + (u ? `　<a href="${esc(u)}" target="_blank" rel="noopener">出典</a>` : "");
+  t.closest("li").appendChild(d); });
 $("#shade").onclick = e => { if (e.target === e.currentTarget) e.currentTarget.hidden = true; };
 // ---- 手を指す（この端末で遊ぶときも通信対戦でも同じ口）。手の中身＝エンジンに渡す引数 ----
 function applyAct(a) {
