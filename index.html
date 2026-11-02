@@ -3,7 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>醸造百選の陣取り</title>
+<title>ぶんどり百選</title>
+<meta name="description" content="サイコロで全国をめぐり、醸造百選の品を取って県を自分の色に染める陣取りゲーム。">
+<meta property="og:type" content="website">
+<meta property="og:title" content="ぶんどり百選">
+<meta property="og:description" content="サイコロで全国をめぐり、醸造百選の品を取って県を自分の色に染める陣取りゲーム。">
+<meta property="og:image" content="https://y-kanno-sakenote.github.io/jozo-jintori/ogp.png">
+<meta property="og:url" content="https://y-kanno-sakenote.github.io/jozo-jintori/">
+<meta name="twitter:card" content="summary_large_image">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@400;600&display=swap" rel="stylesheet">
@@ -92,7 +99,7 @@
   .seats > div { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
   .row .info { flex-basis: 100%; font-size: 15px; } /* 部屋の画面の合言葉の一行 */
   .seats > .off { visibility: hidden; } /* 二人・三人で空く席。場所だけ残す */
-  .seats button { width: 5.8em; padding-left: 0; padding-right: 0; text-align: center; } /* 人・CPU弱/中/強を同じ幅に */
+  .seats button { width: 5.8em; padding-left: 0; padding-right: 0; text-align: center; white-space: nowrap; } /* 人・CPU弱/中/強を同じ幅に。「CPU中級 ⇄」で約5.3em（見積り）＝5.8emに収まる。折り返して帯が跳ねないよう一行に */
   .band.pick { max-height: 55dvh; }
   .band.pick .say { height: 1.6em; } /* 選ぶ間の文は一行（板を広く） */
   .band.pick.ev .say { height: 3.2em; } /* 出来事があった手は二行（何が起きたか・効き目） */
@@ -114,6 +121,7 @@
   .mk .nm { flex: 1; min-width: 0; }
   .mk i.d { margin: 0 0 0 3px; } /* 色札一枚＝点一つ（品の右＝コスト・見出しの右＝その県の自分の色札。使う分は白抜き） */
   .mk label:has(input:disabled) { color: var(--mute); } /* 残りの色札では払えない品 */
+  .mk .hw { font-size: 13px; color: var(--lbl); padding-top: 6px; } /* 選ぶ板の頭に、何をするかの一行 */
   .mk .ph { font-size: 13px; color: var(--mute); letter-spacing: .1em; padding-top: 6px; display: flex; justify-content: space-between; }
   /* 品の一行解説：選ぶ板は品名の横の「？」で（品名を押すのは「選ぶ」なので）、板（帳面・県・取った品）は品名を押して、その下に一行。開くのは一つだけ */
   .mk .q { border: 0; padding: 0 10px; min-height: 40px; font-size: 13px; color: var(--lbl); vertical-align: middle; }
@@ -482,7 +490,7 @@ function renderSetup() {
   for (const i of [0, 2, 1, 3]) { // 二列の格子に左上から詰めるので、紅・若草・藍・山吹の順で置く
     const c = document.createElement("div"), off = i >= setup.n;
     const s = document.createElement("span"); s.className = "seat"; s.innerHTML = dot(i) + COLORS[i]; c.appendChild(s);
-    const b = btn(SEATLBL[setup.seat[i]], () => { // 表示だけ CPU初級/中級/上級（kind・level の値はそのまま）
+    const b = btn(SEATLBL[setup.seat[i]] + " ⇄", () => { // 表示だけ CPU初級/中級/上級（kind・level の値はそのまま）。「 ⇄」＝押すと替わる
       setup.seat[i] = KINDS[(KINDS.indexOf(setup.seat[i]) + 1) % KINDS.length]; renderSetup(); }, "sub");
     c.appendChild(b);
     if (off) { c.className = "off"; c.setAttribute("aria-hidden", "true"); b.disabled = true; b.tabIndex = -1; }
@@ -688,6 +696,8 @@ function renderPick() {
     ? `<div>${evLine(rec.event)}</div><div>${effect(rec.event, rec)}</div>` + (rec.dest ? `<div>目的地に着いた。</div>` : "")
     : `<div>${arrived}</div>`;
   const box = document.createElement("div"); box.className = "mk";
+  // 何をするかの一行（下のボタンの名前「取る」「貯めておく」と同じ言葉で）。取らなければ、撒いた色札はその県に残る（engine の pick）
+  box.innerHTML = `<div class="hw">取る品に印をつける。取らなければ色札を貯めておく。</div>`;
   const cnt = {};
   for (const [i, x] of g.pick.entries()) {
     const h = document.createElement("div"); h.className = "ph";
@@ -740,10 +750,21 @@ function visTop() {
 function logDraw(fresh) {
   const F = LF * 1.3, x = FULL[0] + F * .6, W = 640 - x, top = visTop(); // 上と左は字の大きさに合わせた余白
   if (!g) {
-    // 説明文は県名の1.1倍。題字はそのまま
-    const T = F * 1.3, y0 = top + F * .9 + T * .88, f = LF * 1.1, lh = f * 1.35;
-    LOG.innerHTML = `<text x="${x}" y="${y0.toFixed(1)}" font-size="${T.toFixed(1)}" font-weight="600" letter-spacing=".2em" style="fill:var(--btn)">醸造百選の陣取り</text>`
-      + INTRO(setup.n).map((s, i) => `<text x="${x}" y="${(y0 + F * 1.25 + i * lh).toFixed(1)}" font-size="${f.toFixed(1)}">${s}</text>`).join("");
+    // 説明文は、盤の左上の海（どの県の六角にもかからない所）に入るいちばん大きい字で。上限は画面で十六px、下限は前の大きさ（県名の1.1倍）。
+    const lines = INTRO(setup.n), r = LOG.ownerSVGElement.getBoundingClientRect();
+    const sc = r.width && r.height ? Math.min(r.width / FULL[2], r.height / FULL[3]) : 1, lo = LF * 1.1;
+    const lay = f => { // 字の大きさ f（盤の単位）で、題字と本文の基線。どれかが県や盤の端にかかれば null
+      const T = Math.max(F * 1.3, f * 1.3), lh = f * 1.4, y0 = top + f * .7 + T * .88, y1 = y0 + T * .45 + f * 1.05;
+      const box = [[x, y0 - T * .88, 8 * T * 1.2, T], ...lines.map((s, i) => [x, y1 + i * lh - f * .88, s.length * f, f])];
+      const hit = ([bx, by, bw, bh]) => bx + bw > FULL[0] + FULL[2] - 6 || Object.values(CTR).some(([cx, cy]) =>
+        bx < cx + 31 && bx + bw > cx - 31 && by < cy + 34 && by + bh > cy - 34); // 六角（幅約五十七・高さ六十三）に少し余白
+      return box.some(hit) ? null : { T, y0, y1, lh };
+    };
+    let f = Math.max(lo, 16 / sc), L = lay(f);
+    while (!L && f > lo) { f = Math.max(lo, f - .5); L = lay(f); }
+    if (!L) { f = lo; L = { T: F * 1.3, y0: top + F * .9 + F * 1.3 * .88, lh: f * 1.35 }; L.y1 = L.y0 + F * 1.25; } // 入らない画面は前の並びのまま（下で幅に縮める）
+    LOG.innerHTML = `<text x="${x}" y="${L.y0.toFixed(1)}" font-size="${L.T.toFixed(1)}" font-weight="600" letter-spacing=".2em" style="fill:var(--btn)">ぶんどり百選</text>`
+      + lines.map((s, i) => `<text x="${x}" y="${(L.y1 + i * L.lh).toFixed(1)}" font-size="${f.toFixed(1)}">${s}</text>`).join("");
   } else {
     // 記録は列島のすぐ上に、薄い枠の箱で六行。
     // 箱は盤の単位で左端＝沖縄の六角の左端・右端 540（いちばん長い行「奈良　醤油（古代ひしお、奈良醤油）を得た」が 529 まで）・下端 228（列島と約四十あける。新潟の左端は 645・福井〜富山の上端は 268）。新しい行ほど下、古い行は淡く
@@ -752,7 +773,9 @@ function logDraw(fresh) {
       + LOGS.map((s, i) => `<text x="${(bx + pad).toFixed(1)}" y="${(bt + pad + f * .9 + i * lh).toFixed(1)}" font-size="${f.toFixed(1)}"`
       + ` class="${i < LOGS.length - 1 ? "old" : fresh ? "in" : ""}">${s}</text>`).join("");
   }
-  for (const t of LOG.querySelectorAll("text")) if (t.getComputedTextLength() > (g ? 540 - (CTR["沖縄"][0] - 33 * Math.sqrt(3) / 2) - LF * 1.3 : W)) { t.setAttribute("textLength", W); t.setAttribute("lengthAdjust", "spacingAndGlyphs"); }
+  // はじめの画面は県を避けて並べてあるので、盤の右端だけを見る（越えたら縮める）
+  const lim = g ? 540 - (CTR["沖縄"][0] - 33 * Math.sqrt(3) / 2) - LF * 1.3 : FULL[0] + FULL[2] - 6 - x;
+  for (const t of LOG.querySelectorAll("text")) if (t.getComputedTextLength() > lim) { t.setAttribute("textLength", g ? W : lim); t.setAttribute("lengthAdjust", "spacingAndGlyphs"); }
 }
 // 色の県の数：盤の右下の海（盤の単位で x 706〜836・y 480〜619。いちばん近いのは和歌山・三重・神奈川の六角＝どれも x≦730 かつ y≦480）に、
 // 席ごとに一行「紅　十二県」（名前は席の色の字・右揃え・下から積む）。四人で「若草十二県」の5字でも幅は約130＝海に収まる。字は記録と同じ県名の1.3倍
@@ -1159,7 +1182,7 @@ function renderLobby() {
     const s = ss[i], c = document.createElement("div"), off = i >= room.n;
     const sp = document.createElement("span"); sp.className = "seat"; sp.innerHTML = dot(i) + COLORS[i]; c.appendChild(sp);
     const label = s.kind === "人" ? (s.uid === NET.uid ? "自分" : "人") : s.kind === "空き" ? (host ? "空き" : "座る") : SEATLBL[s.level || "ふつう"];
-    const b = document.createElement("button"); b.textContent = label; b.className = "sub"; c.appendChild(b);
+    const b = document.createElement("button"); b.textContent = label + (host && s.kind !== "人" ? " ⇄" : ""); b.className = "sub"; c.appendChild(b); // 親が押すと巡る席にだけ「 ⇄」
     if (s.kind === "人") b.disabled = true;
     else if (host) b.onclick = () => { const k = LOBBY[(LOBBY.indexOf(s.kind === "空き" ? "空き" : s.level) + 1) % LOBBY.length];
       NET.be.setSeat(NET.code, i, k === "空き" ? { kind: "空き" } : { kind: "コンピュータ", level: k }); };
