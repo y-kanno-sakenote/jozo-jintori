@@ -94,6 +94,7 @@
     background: var(--paper); border: 1px solid var(--line); border-radius: 3px; }
   .row .err { color: var(--dest); font-size: 14px; }
   #warn { font-size: 11px; letter-spacing: 0; }
+  .row .out { margin-left: auto; font-size: 13px; color: var(--mute); text-underline-offset: 3px; padding: 8px 0; } /* はじめの画面の「醸造百選の一覧」：始めるの行の右端。目立たせない */
   /* はじめの画面の席：二列×二段（上に紅・若草、下に藍・山吹）。人数で帯の高さを変えない */
   .row .seats { flex-basis: 100%; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
   .seats > div { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
@@ -498,6 +499,9 @@ function renderSetup() {
   }
   btn("始める", start);
   if (setup.err) { const m = document.createElement("span"); m.className = "err"; m.textContent = setup.err; acts.appendChild(m); } // 部屋を作るときの「つないでいます…」と失敗の理由
+  // 醸造百選の一覧へ。「始める」と同じ行の右端に小さく＝帯の高さを変えない。遊んだ後は「もう一度」でここに戻る
+  const out = document.createElement("a"); out.className = "out"; out.href = "https://lab.sakenote.net/jozo100/";
+  out.target = "_blank"; out.rel = "noopener"; out.textContent = "醸造百選の一覧"; acts.appendChild(out);
   requestAnimationFrame(fit); // 帯の高さが変わるので盤と線の位置を合わせ直す
 }
 // やめる：確かめてから、部屋を抜けて読み込み直す（動いている手やタイマーを残さず最初の画面へ戻る）
